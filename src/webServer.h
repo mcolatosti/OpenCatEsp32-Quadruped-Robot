@@ -1,5 +1,6 @@
 #include "esp32-hal.h"
 #include <WiFi.h>
+#include <WebServer.h> // ESP32 built-in web server library
 #include <WebSocketsServer.h> // download at https://github.com/Links2004/arduinoWebSockets/
 #ifdef WIFI_MANAGER
 #include <WiFiManager.h> // download at https://github.com/tzapu/WiFiManager
@@ -57,6 +58,7 @@
 String ssid = "";
 String password = "";
 WebSocketsServer webSocket = WebSocketsServer(81); // WebSocket服务器在81端口
+WebServer httpServer(80); // HTTP服务器在80端口
 long connectWebTime;
 bool webServerConnected = false;
 
@@ -100,6 +102,17 @@ void sendUltrasonicData(int distance);
 void clearWebTask(String taskId);
 void checkConnectionHealth();
 void sendSocketResponse(uint8_t clientId, String message);
+
+// HTTP Server function declarations
+void setupHttpServer();
+void handleRoot();
+void handleConsole();
+void handleCommand();
+void handleNotFound();
+
+// Enhanced output capture functions
+void sendRobotOutput(String output);
+void sendSystemInfo();
 
 // 简单的 Base64 解码函数
 String base64Decode(String input) {
@@ -300,6 +313,13 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
       if (doc["type"] == "heartbeat") {
         lastHeartbeat[num] = millis();
         sendSocketResponse(num, "{\"type\":\"heartbeat\",\"timestamp\":" + String(millis()) + "}");
+        return;
+      }
+
+      // 处理系统信息请求
+      if (doc["type"] == "get_system_info") {
+        lastHeartbeat[num] = millis();
+        sendSystemInfo();
         return;
       }
 
@@ -626,6 +646,9 @@ bool connectWifiFromStoredConfig()
     webSocket.onEvent(handleWebSocketEvent);
     WEB_INFO_F("WebSocket server started");
     
+    // 启动HTTP服务器
+    setupHttpServer();
+    
     // 显示连接后的内存状态
     size_t freeHeapAfter = ESP.getFreeHeap();
     WEB_INFO("Free heap after WiFi connection: ", freeHeapAfter);
@@ -660,6 +683,9 @@ void startWifiManager() {
     webSocket.begin();
     webSocket.onEvent(handleWebSocketEvent);
     WEB_INFO_F("WebSocket server started");
+    
+    // 启动HTTP服务器
+    setupHttpServer();
   } else {
     WEB_ERROR_F("Timeout: Fail to connect web server!");
   }
@@ -734,6 +760,525 @@ void WebServerLoop()
           }
         }
       }
+    }
+  }
+  
+  // Handle HTTP server requests
+  httpServer.handleClient();
+}
+
+// HTTP Server Implementation
+void setupHttpServer() {
+  // Check available memory before starting HTTP server
+  size_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < 40000) { // Require at least 40KB free for HTTP server
+    WEB_ERROR("Insufficient memory to start HTTP server. Free heap: ", freeHeap);
+    return;
+  }
+  
+  // Route handlers
+  httpServer.on("/", handleRoot);
+  httpServer.on("/console", handleConsole);
+  httpServer.on("/command", HTTP_POST, handleCommand);
+  httpServer.onNotFound(handleNotFound);
+  
+  // Start the server
+  httpServer.begin();
+  WEB_INFO_F("HTTP server started on port 80");
+  WEB_INFO("Free heap after HTTP server start: ", ESP.getFreeHeap());
+}
+
+void handleRoot() {
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenCat Robot - Home</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .online { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .links { text-align: center; margin: 20px 0; }
+        .links a { display: inline-block; margin: 10px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+        .links a:hover { background: #0056b3; }
+        .info { background: #e2e3e5; padding: 15px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 OpenCat Robot Control</h1>
+        <div class="status online">✅ Robot Online - WiFi Connected</div>
+        
+        <div class="links">
+            <a href="/console">🖥️ Console Interface</a>
+        </div>
+        
+        <div class="info">
+            <h3>Available Interfaces:</h3>
+            <p><strong>Console (Port 80):</strong> Simple web-based command interface</p>
+            <p><strong>WebSocket (Port 81):</strong> Real-time bidirectional communication</p>
+        </div>
+        
+        <div class="info">
+            <h3>Robot Information:</h3>
+            <p><strong>Model:</strong> )rawliteral" + String(MODEL) + R"rawliteral(</p>
+            <p><strong>Software:</strong> )rawliteral" + SoftwareVersion + R"rawliteral(</p>
+            <p><strong>IP Address:</strong> )rawliteral" + WiFi.localIP().toString() + R"rawliteral(</p>
+            <p><strong>Free Heap:</strong> <span id="heap">)rawliteral" + String(ESP.getFreeHeap()) + R"rawliteral(</span> bytes</p>
+        </div>
+    </div>
+</body>
+</html>
+)rawliteral";
+  
+  httpServer.send(200, "text/html", html);
+}
+
+void handleConsole() {
+  // Check available memory before serving large HTML page
+  size_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < 30000) { // Require at least 30KB free
+    httpServer.send(503, "text/plain", "Service unavailable - insufficient memory. Free heap: " + String(freeHeap) + " bytes");
+    return;
+  }
+  
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenCat Robot - Console</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: 'Courier New', monospace; margin: 0; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: #569cd6; text-align: center; margin-bottom: 20px; }
+        .console-container { background: #2d2d30; border: 1px solid #3e3e42; border-radius: 8px; overflow: hidden; }
+        .console-header { background: #007acc; color: white; padding: 10px 15px; font-size: 14px; font-weight: bold; }
+        .console-output { height: 400px; overflow-y: auto; padding: 15px; background: #1e1e1e; font-size: 14px; line-height: 1.4; }
+        .console-input { display: flex; padding: 10px; background: #2d2d30; border-top: 1px solid #3e3e42; }
+        .console-input input { flex: 1; background: #1e1e1e; color: #d4d4d4; border: 1px solid #3e3e42; padding: 8px 12px; font-family: 'Courier New', monospace; font-size: 14px; border-radius: 4px; }
+        .console-input button { margin-left: 10px; padding: 8px 16px; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .console-input button:hover { background: #1177bb; }
+        .prompt { color: #4ec9b0; }
+        .command { color: #d7ba7d; }
+        .response { color: #ce9178; margin-left: 20px; }
+        .error { color: #f44747; margin-left: 20px; }
+        .info { color: #608b4e; margin-left: 20px; font-style: italic; }
+        .timestamp { color: #808080; font-size: 12px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; text-align: center; }
+        .online { background: #0f5132; color: #75b798; border: 1px solid #0a3622; }
+        .controls { margin: 15px 0; text-align: center; }
+        .controls button { margin: 0 5px; padding: 6px 12px; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .controls button:hover { background: #1177bb; }
+        .quick-commands { margin: 15px 0; }
+        .quick-commands h3 { color: #569cd6; margin-bottom: 10px; }
+        .quick-commands button { margin: 2px; padding: 4px 8px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #5a5a5a; border-radius: 3px; cursor: pointer; font-size: 12px; }
+        .quick-commands button:hover { background: #464647; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 OpenCat Robot Console</h1>
+        
+        <div class="status online" id="status">
+            ✅ Connected to Robot at )rawliteral" + WiFi.localIP().toString() + R"rawliteral(
+        </div>
+        
+        <div class="console-container">
+            <div class="console-header">
+                Console Output - OpenCat Robot Terminal
+            </div>
+            <div class="console-output" id="output">
+                <div class="info">OpenCat Robot Console Ready</div>
+                <div class="info">Enter commands below or use quick commands. Type 'h' for help.</div>
+                <div class="prompt">robot@opencat:~$</div>
+            </div>
+            <div class="console-input">
+                <input type="text" id="commandInput" placeholder="Enter command (e.g., 'ksit', 'kup', 'h' for help)" maxlength="50">
+                <button onclick="sendCommand()">Send</button>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button onclick="clearConsole()">Clear</button>
+            <button onclick="connectWebSocket()">Connect WebSocket</button>
+            <button onclick="disconnectWebSocket()">Disconnect</button>
+        </div>
+        
+        <div class="quick-commands">
+            <h3>Quick Commands:</h3>
+            <button onclick="quickCommand('ksit')">Sit</button>
+            <button onclick="quickCommand('kup')">Stand Up</button>
+            <button onclick="quickCommand('kwkF')">Walk Forward</button>
+            <button onclick="quickCommand('kwkL')">Walk Left</button>
+            <button onclick="quickCommand('kwkR')">Walk Right</button>
+            <button onclick="quickCommand('kwkB')">Walk Back</button>
+            <button onclick="quickCommand('d')">Rest</button>
+            <button onclick="quickCommand('g')">Toggle Gyro</button>
+            <button onclick="quickCommand('b')">Beep</button>
+            <button onclick="quickCommand('j')">Joint Angles</button>
+            <button onclick="quickCommand('P')">Battery</button>
+            <button onclick="getSystemInfo()">System Info</button>
+            <button onclick="quickCommand('h')">Help</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let wsConnected = false;
+        let commandHistory = [];
+        let historyIndex = -1;
+        
+        function addToConsole(text, className = '') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span class="${className}">${text}</span>`;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function clearConsole() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<div class="info">Console cleared</div><div class="prompt">robot@opencat:~$</div>';
+        }
+        
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addToConsole('WebSocket already connected', 'info');
+                return;
+            }
+            
+            const wsUrl = `ws://${window.location.hostname}:81`;
+            addToConsole(`Connecting to WebSocket at ${wsUrl}...`, 'info');
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                wsConnected = true;
+                addToConsole('✅ WebSocket connected successfully', 'info');
+                document.getElementById('status').innerHTML = '✅ Connected to Robot (HTTP + WebSocket)';
+                document.getElementById('status').className = 'status online';
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'response') {
+                        // Detailed response handling
+                        if (data.status === 'completed' && data.results) {
+                            addToConsole(`✅ Command completed (Task: ${data.taskId})`, 'info');
+                            data.results.forEach((result, index) => {
+                                if (result && result.trim()) {
+                                    addToConsole(`Result ${index + 1}: ${result}`, 'response');
+                                }
+                            });
+                        } else if (data.status === 'running') {
+                            addToConsole(`🔄 Command executing (Task: ${data.taskId})`, 'info');
+                        } else if (data.status === 'error') {
+                            addToConsole(`❌ Error: ${data.error || 'Unknown error'}`, 'error');
+                        } else {
+                            addToConsole(`Response: ${JSON.stringify(data, null, 2)}`, 'response');
+                        }
+                    } else if (data.type === 'event_cam') {
+                        addToConsole(`📷 Camera: Object detected at (${data.x}, ${data.y}) size: ${data.width}×${data.height}`, 'info');
+                    } else if (data.type === 'event_us') {
+                        addToConsole(`📏 Ultrasonic: Distance ${data.distance}cm`, 'info');
+                    } else if (data.type === 'connected') {
+                        addToConsole(`🔗 WebSocket connected (Client ID: ${data.clientId})`, 'info');
+                    } else if (data.type === 'robot_output') {
+                        addToConsole(`🤖 Robot: ${data.message}`, 'response');
+                    } else if (data.type === 'system_info') {
+                        addToConsole(`ℹ️ System Info:`, 'info');
+                        addToConsole(`   Model: ${data.model}`, 'info');
+                        addToConsole(`   Software: ${data.software_version}`, 'info');
+                        addToConsole(`   Free Heap: ${data.free_heap} bytes`, 'info');
+                        addToConsole(`   Uptime: ${Math.floor(data.uptime/1000)}s`, 'info');
+                        if (data.battery_voltage) {
+                            addToConsole(`   Battery: ${data.battery_voltage}V`, 'info');
+                        }
+                        addToConsole(`   WiFi RSSI: ${data.wifi_rssi}dBm`, 'info');
+                    } else if (data.type === 'heartbeat') {
+                        // Don't log heartbeats to avoid spam, just update status silently
+                        return;
+                    } else {
+                        addToConsole(`📡 WebSocket: ${event.data}`, 'response');
+                    }
+                } catch (e) {
+                    // Handle non-JSON messages (raw text responses)
+                    const message = event.data.toString().trim();
+                    if (message.length > 0) {
+                        addToConsole(`📡 Robot Output: ${message}`, 'response');
+                    }
+                }
+            };
+            
+            ws.onclose = function() {
+                wsConnected = false;
+                addToConsole('❌ WebSocket disconnected', 'error');
+                document.getElementById('status').innerHTML = '⚠️ Connected to Robot (HTTP only)';
+                document.getElementById('status').style.background = '#664d03';
+            };
+            
+            ws.onerror = function(error) {
+                addToConsole(`WebSocket error: ${error}`, 'error');
+            };
+        }
+        
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                wsConnected = false;
+                addToConsole('WebSocket disconnected', 'info');
+            }
+        }
+        
+        function sendCommand() {
+            const input = document.getElementById('commandInput');
+            const command = input.value.trim();
+            if (!command) return;
+            
+            commandHistory.push(command);
+            historyIndex = commandHistory.length;
+            
+            addToConsole(`> ${command}`, 'command');
+            
+            if (wsConnected && ws.readyState === WebSocket.OPEN) {
+                // Send via WebSocket for real-time response
+                const message = {
+                    type: 'command',
+                    commands: [command],
+                    taskId: Date.now().toString()
+                };
+                ws.send(JSON.stringify(message));
+                addToConsole('Command sent via WebSocket', 'info');
+            } else {
+                // Fallback to HTTP POST
+                fetch('/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `command=${encodeURIComponent(command)}`
+                })
+                .then(response => response.text())
+                .then(data => {
+                    addToConsole(data, 'response');
+                })
+                .catch(error => {
+                    addToConsole(`Error: ${error}`, 'error');
+                });
+            }
+            
+            input.value = '';
+        }
+        
+        function quickCommand(cmd) {
+            document.getElementById('commandInput').value = cmd;
+            sendCommand();
+        }
+        
+        function getSystemInfo() {
+            if (wsConnected && ws.readyState === WebSocket.OPEN) {
+                addToConsole('> Requesting system information...', 'command');
+                // Send a special message to request system info
+                const message = {
+                    type: 'get_system_info',
+                    timestamp: Date.now()
+                };
+                ws.send(JSON.stringify(message));
+            } else {
+                addToConsole('WebSocket not connected - system info requires WebSocket', 'error');
+            }
+        }
+        
+        // Handle Enter key and command history
+        document.getElementById('commandInput').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                sendCommand();
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    this.value = commandHistory[historyIndex];
+                }
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    this.value = commandHistory[historyIndex];
+                } else {
+                    historyIndex = commandHistory.length;
+                    this.value = '';
+                }
+            }
+        });
+        
+        // Auto-connect WebSocket on page load
+        setTimeout(connectWebSocket, 1000);
+    </script>
+</body>
+</html>
+)rawliteral";
+  
+  httpServer.send(200, "text/html", html);
+}
+
+void handleCommand() {
+  if (!httpServer.hasArg("command")) {
+    httpServer.send(400, "text/plain", "Error: No command provided");
+    return;
+  }
+  
+  String command = httpServer.arg("command");
+  
+  // Basic command validation
+  if (command.length() == 0 || command.length() > 50) {
+    httpServer.send(400, "text/plain", "Error: Invalid command length");
+    return;
+  }
+  
+  // Process the command and capture detailed output
+  if (command.length() > 0) {
+    // Clear previous web response
+    webResponse = "";
+    
+    // Set up command processing
+    token = command[0];
+    strcpy(newCmd, command.c_str() + 1);
+    cmdLen = command.length() - 1;
+    newCmd[cmdLen] = '\0';
+    newCmdIdx = 4; // Set to process command
+    
+    // Create verbose response with detailed information
+    String response = ">>> Executing Command: '" + command + "'\n";
+    response += "Token: '" + String(token) + "'\n";
+    response += "Arguments: '" + String(newCmd) + "'\n";
+    response += "Argument Length: " + String(cmdLen) + "\n";
+    response += "Timestamp: " + String(millis()) + "ms\n";
+    response += "Free Heap: " + String(ESP.getFreeHeap()) + " bytes\n\n";
+    
+    // Add command-specific information and expected output
+    response += "Expected Action:\n";
+    if (command.startsWith("k")) {
+      String skill = command.substring(1);
+      response += "• Execute skill: '" + skill + "'\n";
+      response += "• Robot will move to new posture\n";
+      response += "• Check WebSocket for real-time feedback\n";
+    } else if (command == "d") {
+      response += "• Set robot to rest position\n";
+      response += "• All servos will be turned off\n";
+    } else if (command == "g") {
+      response += "• Toggle gyro/IMU functionality\n";
+      response += "• Balance control will be affected\n";
+    } else if (command == "j") {
+      response += "• Display all joint angles\n";
+      response += "• Check serial output for detailed readings\n";
+    } else if (command == "P") {
+      response += "• Display battery voltage\n";
+      response += "• Check serial output for voltage reading\n";
+    } else if (command.startsWith("b")) {
+      response += "• Play sound/beep sequence\n";
+      response += "• Listen for audio feedback from robot\n";
+    } else if (command.startsWith("i")) {
+      response += "• Set joint positions individually\n";
+      response += "• Servos will move to specified angles\n";
+    } else if (command.startsWith("X")) {
+      response += "• Execute extension module command\n";
+      response += "• Module-specific functionality activated\n";
+    } else {
+      response += "• Execute custom command\n";
+      response += "• Refer to OpenCat documentation for details\n";
+    }
+    
+    response += "\n";
+    
+    // Add comprehensive help if requested
+    if (command == "h") {
+      // Check memory before building large help string
+      if (ESP.getFreeHeap() < 20000) {
+        response += "Help available - use WebSocket console for full help (insufficient memory for HTTP help)";
+      } else {
+        response += "=== OPENCAT ROBOT COMMANDS ===\n\n";
+        response += "MOVEMENT SKILLS:\n";
+        response += "  ksit, kup, krest, kwkF, kwkB, kwkL, kwkR, ktr, kcr, kpd\n\n";
+        response += "SYSTEM COMMANDS:\n";
+        response += "  d (rest), g (gyro), j (joints), P (battery), i (head), c (calibrate)\n\n";
+        response += "SOUND: b (beep), u (meow)\n";
+        response += "EXTENSIONS: XCP (camera), XCR (reactions)\n";
+        response += "JOINTS: i0 45 (move joint 0 to 45°)\n\n";
+        response += "Use WebSocket for real-time feedback and detailed help.\n";
+      }
+    }
+    
+    response += "Status: Command queued for execution\n";
+    response += "Use WebSocket connection for real-time response monitoring.";
+    
+    httpServer.send(200, "text/plain", response);
+  } else {
+    httpServer.send(400, "text/plain", "Error: Empty command");
+  }
+}
+
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "Available paths:\n";
+  message += "/ - Robot home page\n";
+  message += "/console - Interactive console\n";
+  message += "\nWebSocket available at port 81";
+  
+  httpServer.send(404, "text/plain", message);
+}
+
+// Enhanced output capture functions
+void sendRobotOutput(String output) {
+  if (!webServerConnected || connectedClients.empty() || output.length() == 0) {
+    return;
+  }
+
+  JsonDocument outputDoc;
+  outputDoc["type"] = "robot_output";
+  outputDoc["message"] = output;
+  outputDoc["timestamp"] = millis();
+
+  String outputData;
+  serializeJson(outputDoc, outputData);
+
+  // Send to all connected WebSocket clients
+  for (auto &client : connectedClients) {
+    if (client.second) { // If client is still connected
+      webSocket.sendTXT(client.first, outputData);
+    }
+  }
+}
+
+void sendSystemInfo() {
+  if (!webServerConnected || connectedClients.empty()) {
+    return;
+  }
+
+  JsonDocument infoDoc;
+  infoDoc["type"] = "system_info";
+  infoDoc["model"] = MODEL;
+  infoDoc["software_version"] = SoftwareVersion;
+  infoDoc["ip_address"] = WiFi.localIP().toString();
+  infoDoc["free_heap"] = ESP.getFreeHeap();
+  infoDoc["uptime"] = millis();
+#ifdef VOLTAGE
+  extern float lastVoltage; // Declare as extern since it's defined in OpenCat.h
+  infoDoc["battery_voltage"] = lastVoltage;
+#endif
+  infoDoc["wifi_rssi"] = WiFi.RSSI();
+  infoDoc["timestamp"] = millis();
+
+  String infoData;
+  serializeJson(infoDoc, infoData);
+
+  // Send to all connected WebSocket clients
+  for (auto &client : connectedClients) {
+    if (client.second) {
+      webSocket.sendTXT(client.first, infoData);
     }
   }
 }
