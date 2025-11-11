@@ -55,8 +55,8 @@
 #define MAX_CLIENTS 2                   // Maximum connection limit
 
 // WiFi configuration
-String ssid = "";
-String password = "";
+String ssid = "MEC";
+String password = "Myc@t1sm1st3r!";
 WebSocketsServer webSocket = WebSocketsServer(81); // WebSocket server on port 81
 WebServer httpServer(80); // HTTP server on port 80
 long connectWebTime;
@@ -68,6 +68,15 @@ std::map<uint8_t, unsigned long> lastHeartbeat; // Record last heartbeat time fo
 
 // Connection health check
 unsigned long lastHealthCheckTime = 0;
+
+// OPTION 1 EVENT-DRIVEN JOINT UPDATES - START
+// Joint change detection variables
+int previousJointAngles[DOF] = {0};  // Track previous joint positions
+unsigned long lastJointUpdateTime = 0;  // Rate limiting
+const unsigned long MIN_JOINT_UPDATE_INTERVAL = 50;  // Minimum 50ms between updates (20Hz max)
+const int JOINT_CHANGE_THRESHOLD = 3;  // Degrees - only update if change > 3°
+bool jointUpdatePending = false;  // Flag for pending update
+// OPTION 1 EVENT-DRIVEN JOINT UPDATES - END
 
 // Asynchronous task management
 struct WebTask
@@ -99,6 +108,11 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
 void sendCameraData(int xCoord, int yCoord, int width, int height);
 #endif
 void sendUltrasonicData(int distance);
+String getJointAnglesJson();
+// OPTION 1 EVENT-DRIVEN JOINT UPDATES - START
+void sendJointUpdateIfChanged();
+void notifyJointChange();
+// OPTION 1 EVENT-DRIVEN JOINT UPDATES - END
 void clearWebTask(String taskId);
 void checkConnectionHealth();
 void sendSocketResponse(uint8_t clientId, String message);
@@ -258,7 +272,66 @@ void sendUltrasonicData(int distance) {
   }
 }
 
-// WebSocket event handling
+// Get current joint angles as JSON string
+String getJointAnglesJson() {
+  JsonDocument jointDoc;
+  JsonArray angles = jointDoc["angles"].to<JsonArray>();
+  for (int i = 0; i < DOF; i++) {
+    angles.add((int)currentAng[i]);
+  }
+  String result;
+  serializeJson(jointDoc, result);
+  return result;
+}
+
+// OPTION 1 EVENT-DRIVEN JOINT UPDATES - START
+// Check if joints have changed significantly and send update if needed
+void sendJointUpdateIfChanged() {
+  if (!webServerConnected || connectedClients.empty()) {
+    return;
+  }
+  
+  // Rate limiting - don't send updates too frequently
+  unsigned long currentTime = millis();
+  if (currentTime - lastJointUpdateTime < MIN_JOINT_UPDATE_INTERVAL) {
+    jointUpdatePending = true;  // Mark for later
+    return;
+  }
+  
+  // Check if any joint has changed significantly
+  bool hasSignificantChange = false;
+  for (int i = 0; i < DOF; i++) {
+    if (abs(currentAng[i] - previousJointAngles[i]) >= JOINT_CHANGE_THRESHOLD) {
+      hasSignificantChange = true;
+      break;
+    }
+  }
+  
+  if (hasSignificantChange) {
+    // Update previous angles
+    for (int i = 0; i < DOF; i++) {
+      previousJointAngles[i] = currentAng[i];
+    }
+    
+    // Send joint data to all connected clients
+    String jointData = "{\"type\":\"joint_data\"," + getJointAnglesJson().substring(1);
+    for (auto &client : connectedClients) {
+      if (client.second) { // If client is still connected
+        webSocket.sendTXT(client.first, jointData);
+      }
+    }
+    
+    lastJointUpdateTime = currentTime;
+    jointUpdatePending = false;
+  }
+}
+
+// Call this function whenever joints are moved
+void notifyJointChange() {
+  sendJointUpdateIfChanged();
+}
+// OPTION 1 EVENT-DRIVEN JOINT UPDATES - END
+
 void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
     case WStype_DISCONNECTED:
@@ -320,6 +393,14 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
       if (doc["type"] == "get_system_info") {
         lastHeartbeat[num] = millis();
         sendSystemInfo();
+        return;
+      }
+
+      // Handle joint refresh requests
+      if (doc["type"] == "get_joints") {
+        lastHeartbeat[num] = millis();
+        String jointData = "{\"type\":\"joint_data\"," + getJointAnglesJson().substring(1);
+        sendSocketResponse(num, jointData);
         return;
       }
 
@@ -422,7 +503,7 @@ void startWebTask(String taskId)
             WEB_DEBUG("base64 decode args count: ", cmdLen);
         } else {
           WEB_ERROR("base64 decode failed: ", task.currentCommandIndex);
-          // base64 解码失败，跳过这个命令
+          // base64 decode failed, skip command
           task.currentCommandIndex++;
           startWebTask(taskId);
           return;
@@ -610,11 +691,11 @@ bool connectWifi(String ssid, String password, int maxRetries = 3)
 // When WIFI_MANAGER is not enabled, try to read and use previously saved WiFi information to connect
 bool connectWifiFromStoredConfig()
 {
-  // 检查可用内存
+  // Check available memory
   size_t freeHeap = ESP.getFreeHeap();
   WEB_INFO("Free heap before WiFi init: ", freeHeap);
   
-  if (freeHeap < 50000) { // 如果可用内存少于50KB
+  if (freeHeap < 50000) { // If available memory less than 50KB
     WEB_ERROR("Insufficient memory for WiFi initialization: ", freeHeap);
     return false;
   }
@@ -632,24 +713,28 @@ bool connectWifiFromStoredConfig()
   String savedSsid = String(reinterpret_cast<char*>(cfg.sta.ssid));
   String savedPassword = String(reinterpret_cast<char*>(cfg.sta.password));
 
+
   if (savedSsid.length() == 0) {
-    WEB_WARN_F("No stored SSID found");
-    return false;
+    WEB_WARN_F("No stored SSID found, using default credentials");
+    savedSsid = ssid;
+    savedPassword = password;
   }
 
   webServerConnected = connectWifi(savedSsid, savedPassword);
 
   if (webServerConnected) {
     printToAllPorts("Successfully connected Wifi to IP Address: " + WiFi.localIP().toString());
-    // 启动WebSocket服务器
+    // Start WebSocket server
     webSocket.begin();
     webSocket.onEvent(handleWebSocketEvent);
-    WEB_INFO_F("WebSocket server started");
+    // Enable heartbeat with longer timeout (30 seconds)
+    webSocket.enableHeartbeat(15000, 3000, 2); // ping every 15s, pong timeout 3s, max 2 missed
+    WEB_INFO_F("WebSocket server started with heartbeat enabled");
     
-    // 启动HTTP服务器
+    // Start HTTP server
     setupHttpServer();
     
-    // 显示连接后的内存状态
+    // Show memory status after connection
     size_t freeHeapAfter = ESP.getFreeHeap();
     WEB_INFO("Free heap after WiFi connection: ", freeHeapAfter);
   } else {
@@ -679,12 +764,14 @@ void startWifiManager() {
   }
 
   if (webServerConnected) {
-    // 启动WebSocket服务器
+    // Start WebSocket server
     webSocket.begin();
     webSocket.onEvent(handleWebSocketEvent);
-    WEB_INFO_F("WebSocket server started");
+    // Enable heartbeat with longer timeout (30 seconds)
+    webSocket.enableHeartbeat(15000, 3000, 2); // ping every 15s, pong timeout 3s, max 2 missed
+    WEB_INFO_F("WebSocket server started with heartbeat enabled");
     
-    // 启动HTTP服务器
+    // Start HTTP server
     setupHttpServer();
   } else {
     WEB_ERROR_F("Timeout: Fail to connect web server!");
@@ -711,17 +798,17 @@ void resetWifiManager() {
   ESP.restart();
 }
 
-// 主循环调用函数
+// Main loop function call
 void WebServerLoop()
 {
   if (webServerConnected) {
     webSocket.loop();
     
-    // 监控BLE活动对WebSocket的影响
+    // Monitor BLE activity impact on WebSocket
     static unsigned long lastBleStatusLog = 0;
     unsigned long currentTime = millis();
     
-    if (currentTime - lastBleStatusLog > 30000) { // 每30秒记录一次状态
+    if (currentTime - lastBleStatusLog > 30000) { // Log status every 30 seconds
 #ifdef BT_CLIENT
       extern boolean doScan;
       extern boolean btConnected;
@@ -734,22 +821,22 @@ void WebServerLoop()
       lastBleStatusLog = currentTime;
     }
 
-    // 定期检查连接健康状态
+    // Periodically check connection health
     if (currentTime - lastHealthCheckTime > HEALTH_CHECK_INTERVAL) {
       checkConnectionHealth();
       lastHealthCheckTime = currentTime;
     }
 
-    // 检查任务超时
+    // Check task timeout
     for (auto &pair : webTasks) {
       WebTask &task = pair.second;
       if (task.status == "running" && task.startTime > 0) {
-        if (currentTime - task.startTime > WEB_TASK_EXECUTION_TIMEOUT) { // 使用配置的任务执行超时
+        if (currentTime - task.startTime > WEB_TASK_EXECUTION_TIMEOUT) { // Use configured task execution timeout
           WEB_ERROR("web task timeout: ", task.taskId);
           task.status = "error";
           task.resultReady = true;
 
-          // 发送超时状态给客户端
+          // Send timeout status to client
           sendSocketResponse(task.clientId, "{\"taskId\":\"" + task.taskId + "\",\"status\":\"error\",\"error\":\"Task timeout\"}");
 
           if (task.taskId == currentWebTaskId) {
@@ -761,6 +848,11 @@ void WebServerLoop()
         }
       }
     }
+  }
+  
+  // JOINT UPDATE: Process pending joint updates with rate limiting
+  if (jointUpdatePending) {
+    sendJointUpdateIfChanged();
   }
   
   // Handle HTTP server requests
@@ -795,288 +887,79 @@ void handleRoot() {
 }
 
 void handleConsole() {
-  // Check available memory before serving large HTML page
+  // Check available memory - minimal version
   size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < 30000) { // Require at least 30KB free
-    httpServer.send(503, "text/plain", "Service unavailable - insufficient memory. Free heap: " + String(freeHeap) + " bytes");
+  if (freeHeap < 8000) { // Very low threshold for minimal page
+    httpServer.send(503, "text/plain", "Low memory: " + String(freeHeap) + " bytes");
     return;
   }
   
-  String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-    <title>OpenCat Robot - Console</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: 'Courier New', monospace; margin: 0; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 { color: #569cd6; text-align: center; margin-bottom: 20px; }
-        .console-container { background: #2d2d30; border: 1px solid #3e3e42; border-radius: 8px; overflow: hidden; }
-        .console-header { background: #007acc; color: white; padding: 10px 15px; font-size: 14px; font-weight: bold; }
-        .console-output { height: 400px; overflow-y: auto; padding: 15px; background: #1e1e1e; font-size: 14px; line-height: 1.4; }
-        .console-input { display: flex; padding: 10px; background: #2d2d30; border-top: 1px solid #3e3e42; }
-        .console-input input { flex: 1; background: #1e1e1e; color: #d4d4d4; border: 1px solid #3e3e42; padding: 8px 12px; font-family: 'Courier New', monospace; font-size: 14px; border-radius: 4px; }
-        .console-input button { margin-left: 10px; padding: 8px 16px; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        .console-input button:hover { background: #1177bb; }
-        .prompt { color: #4ec9b0; }
-        .command { color: #d7ba7d; }
-        .response { color: #ce9178; margin-left: 20px; }
-        .error { color: #f44747; margin-left: 20px; }
-        .info { color: #608b4e; margin-left: 20px; font-style: italic; }
-        .timestamp { color: #808080; font-size: 12px; }
-        .status { padding: 10px; margin: 10px 0; border-radius: 5px; text-align: center; }
-        .online { background: #0f5132; color: #75b798; border: 1px solid #0a3622; }
-        .controls { margin: 15px 0; text-align: center; }
-        .controls button { margin: 0 5px; padding: 6px 12px; background: #0e639c; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .controls button:hover { background: #1177bb; }
-        .quick-commands { margin: 15px 0; }
-        .quick-commands h3 { color: #569cd6; margin-bottom: 10px; }
-        .quick-commands button { margin: 2px; padding: 4px 8px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #5a5a5a; border-radius: 3px; cursor: pointer; font-size: 12px; }
-        .quick-commands button:hover { background: #464647; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🤖 OpenCat Robot Console</h1>
-        
-        <div class="status online" id="status">
-            ✅ Connected to Robot at )rawliteral" + WiFi.localIP().toString() + R"rawliteral(
-        </div>
-        
-        <div class="console-container">
-            <div class="console-header">
-                Console Output - OpenCat Robot Terminal
-            </div>
-            <div class="console-output" id="output">
-                <div class="info">OpenCat Robot Console Ready</div>
-                <div class="info">Enter commands below or use quick commands. Type 'h' for help.</div>
-                <div class="prompt">robot@opencat:~$</div>
-            </div>
-            <div class="console-input">
-                <input type="text" id="commandInput" placeholder="Enter command (e.g., 'ksit', 'kup', 'h' for help)" maxlength="50">
-                <button onclick="sendCommand()">Send</button>
-            </div>
-        </div>
-        
-        <div class="controls">
-            <button onclick="clearConsole()">Clear</button>
-            <button onclick="connectWebSocket()">Connect WebSocket</button>
-            <button onclick="disconnectWebSocket()">Disconnect</button>
-        </div>
-        
-        <div class="quick-commands">
-            <h3>Quick Commands:</h3>
-            <button onclick="quickCommand('ksit')">Sit</button>
-            <button onclick="quickCommand('kup')">Stand Up</button>
-            <button onclick="quickCommand('kwkF')">Walk Forward</button>
-            <button onclick="quickCommand('kwkL')">Walk Left</button>
-            <button onclick="quickCommand('kwkR')">Walk Right</button>
-            <button onclick="quickCommand('kwkB')">Walk Back</button>
-            <button onclick="quickCommand('d')">Rest</button>
-            <button onclick="quickCommand('g')">Toggle Gyro</button>
-            <button onclick="quickCommand('b')">Beep</button>
-            <button onclick="quickCommand('j')">Joint Angles</button>
-            <button onclick="quickCommand('P')">Battery</button>
-            <button onclick="getSystemInfo()">System Info</button>
-            <button onclick="quickCommand('h')">Help</button>
-        </div>
-    </div>
+  String html = R"rawliteral(<!DOCTYPE html><html><head><title>OpenCat Console</title>
+<style>html,body{height:100%;margin:0;padding:10px;box-sizing:border-box;font-family:monospace;background:#000;color:#0f0}
+#out{height:85vh;overflow-y:auto;border:1px solid #444;padding:5px;background:#111}
+#cmd{width:60%;padding:5px;background:#222;color:#0f0;border:1px solid #444}
+.btn{padding:4px 8px;margin:2px;background:#333;color:#0f0;border:1px solid #444;cursor:pointer}
+.btn:hover{background:#444}</style></head><body>
+<h3>OpenCat Console <span id="status" style="color:#ff0">*</span></h3>
+<div style="display:flex;gap:10px">
+<div style="flex:2">
+<div id="out">Ready. Free: )rawliteral" + String(freeHeap) + R"rawliteral( bytes<br></div>
+<input id="cmd" placeholder="Enter command...">
+<button class="btn" onclick="send()">Send</button>
+<button class="btn" onclick="clear()">Clear</button><br>
+<button class="btn" onclick="q('ksit')">Sit</button>
+<button class="btn" onclick="q('kup')">Up</button>
+<button class="btn" onclick="q('d')">Rest</button>
+<button class="btn" onclick="q('h')">Help</button>
+</div>
+<div id="joints" style="flex:1;border:1px solid #444;padding:8px;background:#111;min-height:180px">
+<h4 style="margin:0 0 8px 0;color:#0af;font-size:14px">Joint Angles</h4>
+<div style="font-family:monospace;font-size:11px;line-height:1.2">
+<div style="text-align:center">
+<div>Head: <span id="j0">0</span> <span id="j1">0</span> Tail: <span id="j2">0</span></div>
+<div style="margin:8px 0">
+<div>    FL     FR</div>
+<div><span id="j8">0</span> <span id="j12">0</span>   <span id="j9">0</span> <span id="j13">0</span></div>
+<div>Shl  Kne   Shl  Kne</div>
+</div>
+<div style="margin:8px 0">
+<div>    BL     BR</div>
+<div><span id="j11">0</span> <span id="j15">0</span>   <span id="j10">0</span> <span id="j14">0</span></div>
+<div>Shl  Kne   Shl  Kne</div>
+</div>
+</div>
+<<button class="btn" onclick="updateJoints()" style="width:48%;margin-top:8px;font-size:11px">Update</button>
+<button class="btn" onclick="toggleAutoUpdates()" id="autoBtn" style="width:48%;margin-top:8px;font-size:11px">Auto: ON</button>
+</div>
+</div>
 
-    <script>
-        let ws = null;
-        let wsConnected = false;
-        let commandHistory = [];
-        let historyIndex = -1;
-        
-        function addToConsole(text, className = '') {
-            const output = document.getElementById('output');
-            const timestamp = new Date().toLocaleTimeString();
-            const div = document.createElement('div');
-            div.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span class="${className}">${text}</span>`;
-            output.appendChild(div);
-            output.scrollTop = output.scrollHeight;
-        }
-        
-        function clearConsole() {
-            const output = document.getElementById('output');
-            output.innerHTML = '<div class="info">Console cleared</div><div class="prompt">robot@opencat:~$</div>';
-        }
-        
-        function connectWebSocket() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                addToConsole('WebSocket already connected', 'info');
-                return;
-            }
-            
-            const wsUrl = `ws://${window.location.hostname}:81`;
-            addToConsole(`Connecting to WebSocket at ${wsUrl}...`, 'info');
-            
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = function() {
-                wsConnected = true;
-                addToConsole('✅ WebSocket connected successfully', 'info');
-                document.getElementById('status').innerHTML = '✅ Connected to Robot (HTTP + WebSocket)';
-                document.getElementById('status').className = 'status online';
-            };
-            
-            ws.onmessage = function(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'response') {
-                        // Detailed response handling
-                        if (data.status === 'completed' && data.results) {
-                            addToConsole(`✅ Command completed (Task: ${data.taskId})`, 'info');
-                            data.results.forEach((result, index) => {
-                                if (result && result.trim()) {
-                                    addToConsole(`Result ${index + 1}: ${result}`, 'response');
-                                }
-                            });
-                        } else if (data.status === 'running') {
-                            addToConsole(`🔄 Command executing (Task: ${data.taskId})`, 'info');
-                        } else if (data.status === 'error') {
-                            addToConsole(`❌ Error: ${data.error || 'Unknown error'}`, 'error');
-                        } else {
-                            addToConsole(`Response: ${JSON.stringify(data, null, 2)}`, 'response');
-                        }
-                    } else if (data.type === 'event_cam') {
-                        addToConsole(`📷 Camera: Object detected at (${data.x}, ${data.y}) size: ${data.width}×${data.height}`, 'info');
-                    } else if (data.type === 'event_us') {
-                        addToConsole(`📏 Ultrasonic: Distance ${data.distance}cm`, 'info');
-                    } else if (data.type === 'connected') {
-                        addToConsole(`🔗 WebSocket connected (Client ID: ${data.clientId})`, 'info');
-                    } else if (data.type === 'robot_output') {
-                        addToConsole(`🤖 Robot: ${data.message}`, 'response');
-                    } else if (data.type === 'system_info') {
-                        addToConsole(`ℹ️ System Info:`, 'info');
-                        addToConsole(`   Model: ${data.model}`, 'info');
-                        addToConsole(`   Software: ${data.software_version}`, 'info');
-                        addToConsole(`   Free Heap: ${data.free_heap} bytes`, 'info');
-                        addToConsole(`   Uptime: ${Math.floor(data.uptime/1000)}s`, 'info');
-                        if (data.battery_voltage) {
-                            addToConsole(`   Battery: ${data.battery_voltage}V`, 'info');
-                        }
-                        addToConsole(`   WiFi RSSI: ${data.wifi_rssi}dBm`, 'info');
-                    } else if (data.type === 'heartbeat') {
-                        // Don't log heartbeats to avoid spam, just update status silently
-                        return;
-                    } else {
-                        addToConsole(`📡 WebSocket: ${event.data}`, 'response');
-                    }
-                } catch (e) {
-                    // Handle non-JSON messages (raw text responses)
-                    const message = event.data.toString().trim();
-                    if (message.length > 0) {
-                        addToConsole(`📡 Robot Output: ${message}`, 'response');
-                    }
-                }
-            };
-            
-            ws.onclose = function() {
-                wsConnected = false;
-                addToConsole('❌ WebSocket disconnected', 'error');
-                document.getElementById('status').innerHTML = '⚠️ Connected to Robot (HTTP only)';
-                document.getElementById('status').style.background = '#664d03';
-            };
-            
-            ws.onerror = function(error) {
-                addToConsole(`WebSocket error: ${error}`, 'error');
-            };
-        }
-        
-        function disconnectWebSocket() {
-            if (ws) {
-                ws.close();
-                wsConnected = false;
-                addToConsole('WebSocket disconnected', 'info');
-            }
-        }
-        
-        function sendCommand() {
-            const input = document.getElementById('commandInput');
-            const command = input.value.trim();
-            if (!command) return;
-            
-            commandHistory.push(command);
-            historyIndex = commandHistory.length;
-            
-            addToConsole(`> ${command}`, 'command');
-            
-            if (wsConnected && ws.readyState === WebSocket.OPEN) {
-                // Send via WebSocket for real-time response
-                const message = {
-                    type: 'command',
-                    commands: [command],
-                    taskId: Date.now().toString()
-                };
-                ws.send(JSON.stringify(message));
-                addToConsole('Command sent via WebSocket', 'info');
-            } else {
-                // Fallback to HTTP POST
-                fetch('/command', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `command=${encodeURIComponent(command)}`
-                })
-                .then(response => response.text())
-                .then(data => {
-                    addToConsole(data, 'response');
-                })
-                .catch(error => {
-                    addToConsole(`Error: ${error}`, 'error');
-                });
-            }
-            
-            input.value = '';
-        }
-        
-        function quickCommand(cmd) {
-            document.getElementById('commandInput').value = cmd;
-            sendCommand();
-        }
-        
-        function getSystemInfo() {
-            if (wsConnected && ws.readyState === WebSocket.OPEN) {
-                addToConsole('> Requesting system information...', 'command');
-                // Send a special message to request system info
-                const message = {
-                    type: 'get_system_info',
-                    timestamp: Date.now()
-                };
-                ws.send(JSON.stringify(message));
-            } else {
-                addToConsole('WebSocket not connected - system info requires WebSocket', 'error');
-            }
-        }
-        
-        // Handle Enter key and command history
-        document.getElementById('commandInput').addEventListener('keydown', function(event) {
-            if (event.key === 'Enter') {
-                sendCommand();
-            } else if (event.key === 'ArrowUp') {
-                event.preventDefault();
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    this.value = commandHistory[historyIndex];
-                }
-            } else if (event.key === 'ArrowDown') {
-                event.preventDefault();
-                if (historyIndex < commandHistory.length - 1) {
-                    historyIndex++;
-                    this.value = commandHistory[historyIndex];
-                } else {
-                    historyIndex = commandHistory.length;
-                    this.value = '';
-                }
-            }
-        });
-        
-        // Auto-connect WebSocket on page load
-        setTimeout(connectWebSocket, 1000);
-    </script>
-</body>
-</html>
+
+<script>
+let ws;
+function log(msg,type){let out=document.getElementById('out');let color=type==='command'?'#ff0':type==='error'?'#f66':'#0f0';out.innerHTML+='<br><span style="color:'+color+'">'+msg+'</span>';out.scrollTop=999999}
+function send(){let c=document.getElementById('cmd').value.trim();if(!c)return;log('> '+c,'command');
+if(ws&&ws.readyState===1){ws.send(JSON.stringify({type:'command',commands:[c]}));log('> Sent via WebSocket','normal')}
+else{fetch('/command',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'command='+encodeURIComponent(c)}).then(r=>r.text()).then(d=>log(d,'normal')).catch(e=>log('Error: '+e,'error'))}
+document.getElementById('cmd').value=''}
+function q(c){document.getElementById('cmd').value=c;send()}
+function clear(){document.getElementById('out').innerHTML='Console cleared'}
+function updateJoints(){if(ws&&ws.readyState===1){ws.send(JSON.stringify({type:'get_joints'}))}}
+function updateJointDisplay(angles){for(let i=0;i<16&&i<angles.length;i++){let elem=document.getElementById('j'+i);if(elem){let angle=angles[i];let color=Math.abs(angle)>90?'#f66':(Math.abs(angle)>60?'#fa0':'#0f0');elem.innerHTML=angle;elem.style.color=color}}}
+function parseJointAngles(data){let nums=data.match(/-?\d+/g);if(nums&&nums.length>=16){let angles=nums.slice(-16).map(n=>parseInt(n));updateJointDisplay(angles)}}
+let autoUpdateInterval;
+let autoUpdatesEnabled=false;
+function startAutoJointUpdates(){clearInterval(autoUpdateInterval);autoUpdateInterval=setInterval(updateJoints,3000)}
+function stopAutoJointUpdates(){clearInterval(autoUpdateInterval)}
+function toggleAutoUpdates(){autoUpdatesEnabled=!autoUpdatesEnabled;let btn=document.getElementById('autoBtn');if(autoUpdatesEnabled){startAutoJointUpdates();btn.innerHTML='Auto: ON';btn.style.background='#333'}else{stopAutoJointUpdates();btn.innerHTML='Auto: OFF';btn.style.background='#555'}}
+function connect(){
+ws=new WebSocket('ws://'+location.hostname+':81');
+ws.onopen=()=>{log('WebSocket connected');document.getElementById('status').style.color='#0f0'};
+ws.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.type==='joint_data'&&d.angles){updateJointDisplay(d.angles)}else if(d.type==='response'&&d.results){d.results.forEach(r=>{log('Result: '+r);if(r.includes('=')||r.match(/-?\d+,\s*-?\d+/)){parseJointAngles(r)}})}else if(d.type==='robot_output'){let msg=d.message.replace(/\n$/,'');log(msg);if(msg.includes('=')||msg.match(/-?\d+,\s*-?\d+/)){parseJointAngles(msg)}}else{log('WS: '+JSON.stringify(d))}}catch{log('WS: '+e.data)}};
+ws.onclose=()=>{log('WebSocket closed');document.getElementById('status').style.color='#ff0';stopAutoJointUpdates();setTimeout(connect,3000)};
+ws.onerror=()=>{log('WebSocket error');document.getElementById('status').style.color='#f00';stopAutoJointUpdates()}}
+document.getElementById('cmd').onkeydown=e=>{if(e.key==='Enter')send()}
+setTimeout(connect,1000)
+</script></body></html>
 )rawliteral";
   
   httpServer.send(200, "text/html", html);
@@ -1120,33 +1003,33 @@ void handleCommand() {
     response += "Expected Action:\n";
     if (command.startsWith("k")) {
       String skill = command.substring(1);
-      response += "• Execute skill: '" + skill + "'\n";
-      response += "• Robot will move to new posture\n";
-      response += "• Check WebSocket for real-time feedback\n";
+      response += "- Execute skill: '" + skill + "'\n";
+      response += "- Robot will move to new posture\n";
+      response += "- Check WebSocket for real-time feedback\n";
     } else if (command == "d") {
-      response += "• Set robot to rest position\n";
-      response += "• All servos will be turned off\n";
+      response += "- Set robot to rest position\n";
+      response += "- All servos will be turned off\n";
     } else if (command == "g") {
-      response += "• Toggle gyro/IMU functionality\n";
-      response += "• Balance control will be affected\n";
+      response += "- Toggle gyro/IMU functionality\n";
+      response += "- Balance control will be affected\n";
     } else if (command == "j") {
-      response += "• Display all joint angles\n";
-      response += "• Check serial output for detailed readings\n";
+      response += "- Display all joint angles\n";
+      response += "- Check serial output for detailed readings\n";
     } else if (command == "P") {
-      response += "• Display battery voltage\n";
-      response += "• Check serial output for voltage reading\n";
+      response += "- Display battery voltage\n";
+      response += "- Check serial output for voltage reading\n";
     } else if (command.startsWith("b")) {
-      response += "• Play sound/beep sequence\n";
-      response += "• Listen for audio feedback from robot\n";
+      response += "- Play sound/beep sequence\n";
+      response += "- Listen for audio feedback from robot\n";
     } else if (command.startsWith("i")) {
-      response += "• Set joint positions individually\n";
-      response += "• Servos will move to specified angles\n";
+      response += "- Set joint positions individually\n";
+      response += "- Servos will move to specified angles\n";
     } else if (command.startsWith("X")) {
-      response += "• Execute extension module command\n";
-      response += "• Module-specific functionality activated\n";
+      response += "- Execute extension module command\n";
+      response += "- Module-specific functionality activated\n";
     } else {
-      response += "• Execute custom command\n";
-      response += "• Refer to OpenCat documentation for details\n";
+      response += "- Execute custom command\n";
+      response += "- Refer to OpenCat documentation for details\n";
     }
     
     response += "\n";
@@ -1164,7 +1047,7 @@ void handleCommand() {
         response += "  d (rest), g (gyro), j (joints), P (battery), i (head), c (calibrate)\n\n";
         response += "SOUND: b (beep), u (meow)\n";
         response += "EXTENSIONS: XCP (camera), XCR (reactions)\n";
-        response += "JOINTS: i0 45 (move joint 0 to 45°)\n\n";
+        response += "JOINTS: i0 45 (move joint 0 to 45deg)\n\n";
         response += "Use WebSocket for real-time feedback and detailed help.\n";
       }
     }

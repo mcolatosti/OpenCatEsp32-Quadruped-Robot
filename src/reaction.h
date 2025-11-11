@@ -269,7 +269,10 @@ bool lowBattery() {
 #else
         if (config.getBool("bootSndState", 1))
 #endif
-          playMelody(melodyLowBattery, sizeof(melodyLowBattery) / 2);
+          if (batterySoundWarningCount < 3) {
+            playMelody(melodyLowBattery, sizeof(melodyLowBattery) / 2);
+            batterySoundWarningCount++;
+          }
       }
       batteryWarningCounter = (batteryWarningCounter + 1) % BATTERY_WARNING_FREQ;
       //    strip.show();
@@ -621,11 +624,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
               else if (toupper(newCmd[i]) == C_GYRO_UPDATE)  // if newCmd[i] is 'u' or 'U' - Update gyro reading
                 updateGyroQ = (newCmd[i] == C_GYRO_UPDATE); // if newCmd[i] == 'U', updateGyroQ is true. else 'u', updateGyroQ is false.
               else if (toupper(newCmd[i]) == C_PRINT)
-              {                                      // if newCmd[i] is 'p' or 'P'
-                printGyroQ = (newCmd[i] == C_PRINT); // if newCmd[i] == T_GYRO_PRINT, always print gyro. else only print once
-                print6Axis();
-              }
-              else if (newCmd[i] == '?')
               {
                 PTF("Gyro state:");
                 PTT(" Update-", updateGyroQ);
@@ -911,10 +909,10 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 if (inLen == 2) {
                   if (target[1] >= 1001) {  // Using 1001 for incremental calibration. 1001 is adding 1 degree, 1002 is
                                             // adding 2 and 1009 is adding 9 degrees
-                    target[1] = servoCalib[target[0]] + target[1] - 1000;
+                    target[1] = servoCalib[target[0]] + 1001 - target[1];
                   } else if (target[1] <= -1001) {  // Using -1001 for incremental calibration. -1001 is removing 1
                                                     // degree, 1002 is removing 2 and 1009 is removing 9 degrees
-                    target[1] = servoCalib[target[0]] + target[1] + 1000;
+                    target[1] = servoCalib[target[0]] + 1001 + target[1];
                   }
                   servoCalib[target[0]] = target[1];
                 }

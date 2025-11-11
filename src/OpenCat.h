@@ -412,6 +412,7 @@ long idleTimer = 0;
 #define CHECK_BATTERY_PERIOD 1000  // every 1 seconds. 60 mins -> 3600 seconds
 #define BATTERY_WARNING_FREQ 10  // every 10 seconds
 byte batteryWarningCounter = 0;
+byte batterySoundWarningCount = 0; // Limit sound warning to 3 times
 float lastVoltage;
 int uptime = -1;
 int frame = 0;
