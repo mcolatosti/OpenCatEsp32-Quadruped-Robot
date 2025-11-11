@@ -8,6 +8,10 @@
 // This example creates a bridge between Serial and Classical Bluetooth (SSP with authentication)
 // and also demonstrate that SerialBT has the same functionalities as a normal Serial
 
+
+#include <atomic>
+extern std::atomic<bool> webShowAllOutput;
+
 template<typename T>
 void printToAllPorts(T text, bool newLine = true) {
 #ifdef BT_BLE
@@ -22,7 +26,9 @@ void printToAllPorts(T text, bool newLine = true) {
   }
 #endif
 #ifdef WEB_SERVER
-  if (cmdFromWeb) {
+  // If webShowAllOutput is true, always send output to web console.
+  // If false, only send output if cmdFromWeb is true (web command output).
+  if (webShowAllOutput || cmdFromWeb) {
     if (String(text) != "=") {
       webResponse += String(text);
       if (newLine)

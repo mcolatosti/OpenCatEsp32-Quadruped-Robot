@@ -48,6 +48,8 @@
   #define WEB_DEBUG_F(msg)
 #endif
 
+#include <atomic>
+extern std::atomic<bool> webShowAllOutput;
 // Web server timeout configuration (milliseconds) - optimized for Bluetooth coexistence
 #define HEARTBEAT_TIMEOUT 40000         // Heartbeat timeout: 40s (increased buffer time for BLE interference)
 #define HEALTH_CHECK_INTERVAL 15000     // Health check interval: 15s (reduced frequency)
@@ -456,6 +458,17 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
         WEB_DEBUG("web command group async: ", taskId);
         WEB_DEBUG("command count: ", task.commandGroup.size());
       }
+
+      // Handle output mode toggle
+      if (doc["type"] == "toggle_output_mode") {
+        webShowAllOutput = !webShowAllOutput.load();
+        sendSocketResponse(num, String("{\"type\":\"output_mode\",\"all\":") + (webShowAllOutput ? "true" : "false") + "}");
+        String msg = webShowAllOutput ? "[Web Console] Output mode: Show ALL output" : "[Web Console] Output mode: Show only web command output";
+        sendRobotOutput(msg);
+        // Debug: also print to serial
+        PTL("[DEBUG] Output mode toggled. webShowAllOutput=" + String(webShowAllOutput ? "true" : "false"));
+        return;
+      }
       break;
     }
   }
@@ -695,7 +708,7 @@ bool connectWifiFromStoredConfig()
   size_t freeHeap = ESP.getFreeHeap();
   WEB_INFO("Free heap before WiFi init: ", freeHeap);
   
-  if (freeHeap < 50000) { // If available memory less than 50KB
+  if (freeHeap < 30000) { // If available memory less than 30KB
     WEB_ERROR("Insufficient memory for WiFi initialization: ", freeHeap);
     return false;
   }
@@ -863,7 +876,7 @@ void WebServerLoop()
 void setupHttpServer() {
   // Check available memory before starting HTTP server
   size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < 40000) { // Require at least 40KB free for HTTP server
+  if (freeHeap < 25000) { // Require at least 25KB free for HTTP server
     WEB_ERROR("Insufficient memory to start HTTP server. Free heap: ", freeHeap);
     return;
   }
@@ -911,6 +924,7 @@ void handleConsole() {
 <button class="btn" onclick="q('kup')">Up</button>
 <button class="btn" onclick="q('d')">Rest</button>
 <button class="btn" onclick="q('h')">Help</button>
+<button class="btn" onclick="toggleOutputMode()" id="outputModeBtn" style="margin-left:8px;background:#222">Show: WebCmd</button>
 </div>
 <div id="joints" style="flex:1;border:1px solid #444;padding:8px;background:#111;min-height:180px">
 <h4 style="margin:0 0 8px 0;color:#0af;font-size:14px">Joint Angles</h4>
@@ -935,6 +949,10 @@ void handleConsole() {
 
 
 <script>
+// Client-side keep-alive ping to keep WebSocket connection active
+setInterval(() => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({type: "ping"}));
+}, 10000); // every 10 seconds
 let ws;
 function log(msg,type){let out=document.getElementById('out');let color=type==='command'?'#ff0':type==='error'?'#f66':'#0f0';out.innerHTML+='<br><span style="color:'+color+'">'+msg+'</span>';out.scrollTop=999999}
 function send(){let c=document.getElementById('cmd').value.trim();if(!c)return;log('> '+c,'command');
@@ -953,12 +971,14 @@ function stopAutoJointUpdates(){clearInterval(autoUpdateInterval)}
 function toggleAutoUpdates(){autoUpdatesEnabled=!autoUpdatesEnabled;let btn=document.getElementById('autoBtn');if(autoUpdatesEnabled){startAutoJointUpdates();btn.innerHTML='Auto: ON';btn.style.background='#333'}else{stopAutoJointUpdates();btn.innerHTML='Auto: OFF';btn.style.background='#555'}}
 function connect(){
 ws=new WebSocket('ws://'+location.hostname+':81');
-ws.onopen=()=>{log('WebSocket connected');document.getElementById('status').style.color='#0f0'};
+ws.onopen=()=>{log('WebSocket connected');document.getElementById('status').style.color='#0f0';patchWS();};
 ws.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.type==='joint_data'&&d.angles){updateJointDisplay(d.angles)}else if(d.type==='response'&&d.results){d.results.forEach(r=>{log('Result: '+r);if(r.includes('=')||r.match(/-?\d+,\s*-?\d+/)){parseJointAngles(r)}})}else if(d.type==='robot_output'){let msg=d.message.replace(/\n$/,'');log(msg);if(msg.includes('=')||msg.match(/-?\d+,\s*-?\d+/)){parseJointAngles(msg)}}else{log('WS: '+JSON.stringify(d))}}catch{log('WS: '+e.data)}};
 ws.onclose=()=>{log('WebSocket closed');document.getElementById('status').style.color='#ff0';stopAutoJointUpdates();setTimeout(connect,3000)};
 ws.onerror=()=>{log('WebSocket error');document.getElementById('status').style.color='#f00';stopAutoJointUpdates()}}
 document.getElementById('cmd').onkeydown=e=>{if(e.key==='Enter')send()}
 setTimeout(connect,1000)
+
+
 </script></body></html>
 )rawliteral";
   
@@ -1122,3 +1142,5 @@ void sendSystemInfo() {
     }
   }
 }
+
+

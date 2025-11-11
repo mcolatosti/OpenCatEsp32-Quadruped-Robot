@@ -18,16 +18,19 @@
 
 // you can also activate the following modes by the 'X' token defined in src/OpenCat.h
 #define VOICE                     // Petoi Grove voice module
-#define ULTRASONIC                // for Petoi RGB ultrasonic distance sensor
-#define PIR                       // for PIR (Passive Infrared) sensor
+//#define ULTRASONIC                // for Petoi RGB ultrasonic distance sensor
+//#define PIR                       // for PIR (Passive Infrared) sensor
 #define DOUBLE_TOUCH              // for double touch sensor
-#define DOUBLE_LIGHT              // for double light sensor
-#define DOUBLE_INFRARED_DISTANCE  // for double distance sensor
+//#define DOUBLE_LIGHT              // for double light sensor
+//#define DOUBLE_INFRARED_DISTANCE  // for double distance sensor
 #define GESTURE                   // for Gesture module
 #define CAMERA                    // for Mu Vision camera
 #define QUICK_DEMO                // for quick demo
 // #define ROBOT_ARM                 // for attaching head clip arm
 #include "src/OpenCat.h"
+
+#include <atomic>
+std::atomic<bool> webShowAllOutput{false};
 
 void setup() {
   // put your setup code here, to run once:
@@ -37,6 +40,22 @@ void setup() {
   while (Serial.available() && Serial.read())
     ;  // empty buffer
   initRobot();
+#ifdef WEB_SERVER
+  bool wifiOk = connectWifiFromStoredConfig();
+  if (wifiOk) {
+    PTLF("[DEBUG] Launching WebSocket and HTTP server after WiFi connection");
+    webSocket.begin();
+    PTLF("[DEBUG] webSocket.begin() called");
+    webSocket.onEvent(handleWebSocketEvent);
+    PTLF("[DEBUG] webSocket.onEvent() called");
+  webSocket.enableHeartbeat(30000, 5000, 6); // ping every 30s, pong timeout 5s, max 6 missed
+    PTLF("[DEBUG] webSocket.enableHeartbeat() called");
+    setupHttpServer();
+    PTLF("[DEBUG] setupHttpServer() called");
+  } else {
+    PTLF("[DEBUG] WiFi connection failed, not launching WebSocket/HTTP server");
+  }
+#endif
 }
 
 void loop() {
