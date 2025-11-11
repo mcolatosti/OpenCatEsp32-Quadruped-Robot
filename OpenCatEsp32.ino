@@ -23,7 +23,7 @@
 #define DOUBLE_TOUCH              // for double touch sensor
 //#define DOUBLE_LIGHT              // for double light sensor
 //#define DOUBLE_INFRARED_DISTANCE  // for double distance sensor
-#define GESTURE                   // for Gesture module
+//#define GESTURE                   // for Gesture module
 #define CAMERA                    // for Mu Vision camera
 #define QUICK_DEMO                // for quick demo
 // #define ROBOT_ARM                 // for attaching head clip arm

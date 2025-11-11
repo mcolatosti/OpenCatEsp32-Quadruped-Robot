@@ -924,28 +924,10 @@ void handleConsole() {
 <button class="btn" onclick="q('kup')">Up</button>
 <button class="btn" onclick="q('d')">Rest</button>
 <button class="btn" onclick="q('h')">Help</button>
-<button class="btn" onclick="toggleOutputMode()" id="outputModeBtn" style="margin-left:8px;background:#222">Show: WebCmd</button>
+
 </div>
-<div id="joints" style="flex:1;border:1px solid #444;padding:8px;background:#111;min-height:180px">
-<h4 style="margin:0 0 8px 0;color:#0af;font-size:14px">Joint Angles</h4>
-<div style="font-family:monospace;font-size:11px;line-height:1.2">
-<div style="text-align:center">
-<div>Head: <span id="j0">0</span> <span id="j1">0</span> Tail: <span id="j2">0</span></div>
-<div style="margin:8px 0">
-<div>    FL     FR</div>
-<div><span id="j8">0</span> <span id="j12">0</span>   <span id="j9">0</span> <span id="j13">0</span></div>
-<div>Shl  Kne   Shl  Kne</div>
-</div>
-<div style="margin:8px 0">
-<div>    BL     BR</div>
-<div><span id="j11">0</span> <span id="j15">0</span>   <span id="j10">0</span> <span id="j14">0</span></div>
-<div>Shl  Kne   Shl  Kne</div>
-</div>
-</div>
-<<button class="btn" onclick="updateJoints()" style="width:48%;margin-top:8px;font-size:11px">Update</button>
-<button class="btn" onclick="toggleAutoUpdates()" id="autoBtn" style="width:48%;margin-top:8px;font-size:11px">Auto: ON</button>
-</div>
-</div>
+
+
 
 
 <script>
@@ -961,14 +943,7 @@ else{fetch('/command',{method:'POST',headers:{'Content-Type':'application/x-www-
 document.getElementById('cmd').value=''}
 function q(c){document.getElementById('cmd').value=c;send()}
 function clear(){document.getElementById('out').innerHTML='Console cleared'}
-function updateJoints(){if(ws&&ws.readyState===1){ws.send(JSON.stringify({type:'get_joints'}))}}
-function updateJointDisplay(angles){for(let i=0;i<16&&i<angles.length;i++){let elem=document.getElementById('j'+i);if(elem){let angle=angles[i];let color=Math.abs(angle)>90?'#f66':(Math.abs(angle)>60?'#fa0':'#0f0');elem.innerHTML=angle;elem.style.color=color}}}
-function parseJointAngles(data){let nums=data.match(/-?\d+/g);if(nums&&nums.length>=16){let angles=nums.slice(-16).map(n=>parseInt(n));updateJointDisplay(angles)}}
-let autoUpdateInterval;
-let autoUpdatesEnabled=false;
-function startAutoJointUpdates(){clearInterval(autoUpdateInterval);autoUpdateInterval=setInterval(updateJoints,3000)}
-function stopAutoJointUpdates(){clearInterval(autoUpdateInterval)}
-function toggleAutoUpdates(){autoUpdatesEnabled=!autoUpdatesEnabled;let btn=document.getElementById('autoBtn');if(autoUpdatesEnabled){startAutoJointUpdates();btn.innerHTML='Auto: ON';btn.style.background='#333'}else{stopAutoJointUpdates();btn.innerHTML='Auto: OFF';btn.style.background='#555'}}
+
 function connect(){
 ws=new WebSocket('ws://'+location.hostname+':81');
 ws.onopen=()=>{log('WebSocket connected');document.getElementById('status').style.color='#0f0';patchWS();};
