@@ -249,9 +249,9 @@ void checkBtScan() {
     if (connectToServer()) {
       String bleMessage = String(MODEL) + '\n';
       pRemoteCharacteristicTx->writeValue(bleMessage.c_str(), bleMessage.length()); //tell the Bit model name
-      Serial.println("We are now connected to the BLE Server.");
+  printToAllPorts("We are now connected to the BLE Server.");
     } else {
-      Serial.println("We have failed to connect to the server; there is nothin more we will do.");
+  printToAllPorts("We have failed to connect to the server; there is nothin more we will do.");
     }
     doConnect = false;
   }

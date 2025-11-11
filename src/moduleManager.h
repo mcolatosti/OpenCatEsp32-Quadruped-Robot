@@ -198,7 +198,7 @@ void stopModule(char moduleCode) {
     case EXTENSION_GROVE_SERIAL:
       {
         Serial2.end();
-        PTL("Stop Serial 2");
+  PTLF("Stop Serial 2");
         break;
       }
 #ifdef VOICE

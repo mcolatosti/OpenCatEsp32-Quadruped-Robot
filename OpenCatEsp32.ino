@@ -28,9 +28,12 @@
 #define QUICK_DEMO                // for quick demo
 // #define ROBOT_ARM                 // for attaching head clip arm
 #include "src/OpenCat.h"
+#include "src/SerialWebFork.h"
 
 #include <atomic>
 std::atomic<bool> webShowAllOutput{false};
+
+SerialWebFork SerialFork;
 
 void setup() {
   // put your setup code here, to run once:
@@ -39,6 +42,14 @@ void setup() {
   // Serial1.begin(115200); //second serial port
   while (Serial.available() && Serial.read())
     ;  // empty buffer
+
+  // Print ESP32 reset reason to both USB and web console
+  #include <esp_system.h>
+  esp_reset_reason_t reason = esp_reset_reason();
+  String reasonStr = "ESP32 Reset reason: " + String((int)reason);
+  Serial.println(reasonStr);
+  printToAllPorts(reasonStr);
+
   initRobot();
 #ifdef WEB_SERVER
   bool wifiOk = connectWifiFromStoredConfig();
@@ -105,7 +116,7 @@ void quickDemo() {  // this is an example that use the analog input pin ANALOG1 
   if (abs(currentReading - prevReading) > 50)  // if the reading is significantly different from the previous reading
   {
     PT("Reading on pin ANALOG1:\t");
-    PTL(currentReading);
+  PTLF(currentReading);
     if (currentReading < 50) {                                        // touch and hold on the A2 pin until the condition is met
       tQueue->addTask(T_BEEP, "12 4 14 4 16 2");                      // make melody
       tQueue->addTask(T_INDEXED_SEQUENTIAL_ASC, "0 30 0 -30", 1000);  // move the neck, left shoulder, right shoulder one by one

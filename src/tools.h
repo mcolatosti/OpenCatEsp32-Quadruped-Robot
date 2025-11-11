@@ -1,19 +1,24 @@
+
 #ifndef TOOLS_H
 #define TOOLS_H
+#include "io.h"
 
 // Serial Print macro directive abbreviations
 // Simple macro directives
-#define PT(s)             Serial.print(s)          // Serial print
-#define PTD(s, format)    Serial.print(s, format)  // Formatted serial print
-#define PTL(s)            Serial.println(s)        // Serial print plus newline
-#define PTF(s)            Serial.print(F(s))       // Serial print plus newline with trading flash memory for dynamic memory using F() function
-#define PTLF(s)           Serial.println(F(s))     // Serial print plus newline with trading flash memory for dynamic memory using F() function
+
+#define PT(s)             printToAllPorts(s, false)          // Serial print (no newline)
+#define PTD(s, format)    printToAllPorts(s, false)          // Formatted serial print (no newline, format ignored)
+#define PTL()             printToAllPorts("", true)          // Serial print just a newline
+
+#define PTLF(s)           printToAllPorts(F(s), true)        // Serial print from flash plus newline (string literals only)
+#define PTLN(s)           printToAllPorts(s, true)           // Serial print plus newline (variables/expressions)
+#define PTF(s)            printToAllPorts(F(s), false)       // Serial print from flash (no newline)
 
   // Composite macro directives
 #define PTT(s, delimeter)   {PT(s);    PT(delimeter);}               // Serial print with delimiter
-#define PTTL(s, delimeter)  {PT(s);    PTL(delimeter);}              // Serial print with delimiter plus newline
+#define PTTL(s, delimeter)  {PT(s);    PTLN(delimeter);}              // Serial print with delimiter plus newline
 #define PTH(head, value)    {PT(head); PT('\t');       PT(value);}   // Serial print with head, tab, value
-#define PTHL(head, value)   {PT(head); PT('\t');       PTL(value);}  // Serial print with head, tab, value plus newline
+#define PTHL(head, value)   {PT(head); PT('\t');       PTLN(value);}  // Serial print with head, tab, value plus newline
 
 char getUserInputChar(int waitTimeout = 0) {  //take only the first character, allow "no line ending", "newline", "carriage return", and "both NL & CR"
   long start = millis();
@@ -83,7 +88,7 @@ template<typename T> void printList(T *arr, byte len = DOF) {
     //PT((T)(arr[i]));
     //PT('\t');
   }
-  PTL(temp);
+  PTLN(temp);
 }
 
 template<typename T> String list2String(T *arr, byte len = DOF) {
@@ -127,13 +132,13 @@ template<typename T> void printCmdByType(char t, T *data) {
     PT(t);
     int len = (t < 'a') ? strlenUntil(data, '~') : strlen((char *)data);
     PT("\tcalculated len: ");
-    PTL(len);
+  PTLN(len);
     if (t < 'a') {
-      PTL("Binary ");
+  PTLF("Binary ");
       printListWithoutString((int8_t *)data, len);
     } else {
       PT("ASCII ");
-      PTL((char *)data);
+  PTLN((char *)data);
     }
   }
 }
@@ -168,7 +173,7 @@ void FPS() {
     fps++;
   else {
     PTHL("FPS:", fps);
-    // PTL(fps);
+  // PTLF(fps);
     fps = 0;
     loopTimer = millis();
   }
@@ -195,7 +200,7 @@ void printCmd() {
 }
 
 void resetCmd() {
-  // PTL("Reset Cmd");
+  // PTLF("Reset Cmd");
   // printCmd();
   
   lastToken = token;
@@ -204,7 +209,7 @@ void resetCmd() {
     token = '\0';
   newCmd[0] = '\0';
   cmdLen = 0;
-  // PTL("Done Reset");
+  // PTLF("Done Reset");
 }
 
 char *strGet(char *s, int i) {  //allow negative index
@@ -212,7 +217,7 @@ char *strGet(char *s, int i) {  //allow negative index
   if (abs(i) <= len)
     return s + (i < 0 ? len + i : i);
   else {
-    PTL("Invalid index!");
+  PTLF("Invalid index!");
     return s;
   }
 }

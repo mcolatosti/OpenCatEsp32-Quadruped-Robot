@@ -119,7 +119,7 @@ byte i2c_eeprom_read_byte( unsigned int eeaddress ) {
 
 void writeLong(unsigned int &eeAddress, char *data, int len) {
   //byte locationInPage = eeAddress % PAGE_LIMIT;
-  PTL("Write " + String(len) + " bytes");
+  PTLF("Write " + String(len) + " bytes");
   int writtenToEE = 0;
   while (len > 0) {
     Wire.beginTransmission(DEVICE_ADDRESS);
@@ -130,7 +130,7 @@ void writeLong(unsigned int &eeAddress, char *data, int len) {
     {
       if (eeAddress == SIZE) {
         PTL();
-        PTL("EEPROM overflow!\n");
+  PTLF("EEPROM overflow!\n");
       }
       Wire.write((byte)data[writtenToEE]);
       writtenToWire++;
@@ -141,13 +141,13 @@ void writeLong(unsigned int &eeAddress, char *data, int len) {
     Wire.endTransmission();
     delay(6);  // needs 5ms for page write
   }
-  PTL("Finish writing");
+  PTLF("Finish writing");
 }
 
 void readLong(unsigned int &eeAddress, char *data) {
   int len = i2c_eeprom_read_byte(eeAddress);
   data[len] = '\0';
-  PTL("Read " + String(len) + " bytes");
+  PTLF("Read " + String(len) + " bytes");
   int readFromEE = 0;
   int readToWire = 0;
 
@@ -164,7 +164,7 @@ void readLong(unsigned int &eeAddress, char *data) {
       //eeAddress++;
     } while (--len > 0 && ++readToWire < WIRE_BUFFER);
   }
-  PTL("Finish reading");
+  PTLF("Finish reading");
 }
 
 #include <Adafruit_PWMServoDriver.h>
@@ -259,7 +259,7 @@ void checkBodyMotion()  {
 #endif
       PT(ypr[1] * degPerRad);
       PTF("\t");
-      PTL(ypr[2] * degPerRad);
+  PTLF(ypr[2] * degPerRad);
       // overflow is detected after the ypr is read. it's necessary to keep a lag recrod of previous reading.  -- RzLi --
 #ifdef FIX_OVERFLOW
       for (byte g = 0; g < 2; g++) {
@@ -317,7 +317,7 @@ void setup()
     delay(500);
     // verify connection
     PTLF("Testing connections...");
-    PTL(mpu.testConnection() ? F("MPU successful") : F("MPU failed"));//sometimes it shows "failed" but is ok to bypass.
+  PTLF(mpu.testConnection() ? F("MPU successful") : F("MPU failed"));//sometimes it shows "failed" but is ok to bypass.
   } //while (!mpu.testConnection());
 
   // load and configure the DMP
@@ -383,7 +383,7 @@ void loop() {
   if (loopCounter >= totalTests) {
     if (loopCounter == totalTests) {
       byte totalPass = 0;
-      PTL("Test summary:");
+  PTLF("Test summary:");
       PT("   ");
       for (byte i = 0; i < totalTests; i++) {
         PT(passed[i]);
@@ -405,7 +405,7 @@ void loop() {
   else {
     PT(loopCounter + 1);
     PT(". ");
-    PTL(tests[loopCounter++]);
+  PTLF(tests[loopCounter++]);
     switch (loopCounter) {
       case 1: {
           PTLF("Power the board with two Li-ion batteries in series (6~8.4V). Check:");
@@ -424,7 +424,7 @@ void loop() {
             if (irrecv.decode(&results)) // have we received an IR signal?
             {
               char in = translateIR();
-              PTL(in);
+              PTLF(in);
               irrecv.resume(); // receive the next value
               if (in != '?')
                 if (in == '0') {
@@ -448,7 +448,7 @@ void loop() {
                     i0 =  single++ % 16;
                     it = i0 + 1;
                     PT("move ");
-                    PTL(i0);
+                    PTLF(i0);
                     dly = 2;
                     tStep = 1;
                   }
@@ -573,7 +573,7 @@ The five boxing wizards jump quickly."; // data to write
           char *buffer = new char[len + 1];
           readLong(eeAddress, buffer);
           PTL();
-          PTL("The text is: ");
+          PTLF("The text is: ");
           for (int i = 1; i < len; i++)
             PT(buffer[i]);
           PTL();

@@ -132,7 +132,7 @@ void i2cDetect(TwoWire &wirePort) {
   }
   if (!icmQ && !mpuQ) {
     updateGyroQ = false;
-    PTL("No IMU detected!");
+  PTLF("No IMU detected!");
   }
   if (nDevices == 0)
     Serial.println("- No I2C devices found");
@@ -296,7 +296,7 @@ void writeLong(unsigned int eeAddress, char *data, int len) {
   // byte locationInPage = eeAddress % PAGE_LIMIT;
   if (eeAddress + len >= SIZE) {
     PTL();
-    PTL("EEPROM overflow!\n");
+  PTLF("EEPROM overflow!\n");
     beep(10, 100, 100, 5);
     return;
   }
@@ -331,7 +331,7 @@ void writeLong(unsigned int eeAddress, char *data, int len) {
 
 void readLong(unsigned int eeAddress, char *data) {
   int len = i2c_eeprom_read_byte(eeAddress++);
-  PTL("read " + String(len) + " bytes");
+  PTLN("read " + String(len) + " bytes");
   int readFromEE = 0;
   int readToWire = 0;
 
@@ -350,7 +350,7 @@ void readLong(unsigned int eeAddress, char *data) {
     } while (--len > 0 && ++readToWire < WIRE_BUFFER);
     PTL();
   }
-  PTL("finish reading");
+  PTLF("finish reading");
 }
 
 char *readLongByBytes(int address) {
@@ -482,7 +482,7 @@ void resetAsNewBoard(char mark) {
 #else
   config.putChar("birthmark", mark);
 #endif
-  PTL("Alter the birthmark for reset!");
+  PTLF("Alter the birthmark for reset!");
   delay(5);
   ESP.restart();
 }
@@ -527,7 +527,7 @@ void genBleID(int suffixDigits = 2) {
   config.putString("ID", id);
   uniqueName = String(id);
 #endif
-  PTL(uniqueName);
+  PTLN(uniqueName);
   delete[] id;
 }
 
@@ -587,7 +587,7 @@ void configSetup() {
 #endif
 
 #ifdef I2C_EEPROM_ADDRESS
-    PTL("Using constants from I2C EEPROM");
+  PTLF("Using constants from I2C EEPROM");
     writeLong(EEPROM_VERSION_DATE, tempStr, SoftwareVersion.length());
     i2c_eeprom_write_byte(EEPROM_BOOTUP_SOUND_STATE, soundState);
     i2c_eeprom_write_byte(EEPROM_BUZZER_VOLUME, buzzerVolume);
@@ -604,7 +604,7 @@ void configSetup() {
     i2c_eeprom_write_byte(EEPROM_WIFI_MANAGER, rebootForWifiManagerQ);
 
 #else
-    PTL("Using constants from on-board Flash");
+  PTLF("Using constants from on-board Flash");
     config.putString("versionDate", tempStr);
     config.putBool("bootSndState", soundState);
     config.putChar("buzzerVolume", buzzerVolume);
@@ -623,12 +623,12 @@ void configSetup() {
       playMelody(melodyInit, sizeof(melodyInit) / 2);
 #endif
 #ifndef AUTO_INIT
-    PTL("- Reset the joints' calibration offsets? (Y/n): ");
+  PTLF("- Reset the joints' calibration offsets? (Y/n): ");
     char choice = getUserInputChar();
-    PTL(choice);
+  PTLN(choice);
     if (choice == 'Y' || choice == 'y') {
 #else
-    PTL("- Reset the joints' calibration offsets...");
+  PTLF("- Reset the joints' calibration offsets...");
 #endif
 #ifdef I2C_EEPROM_ADDRESS
       for (byte c = 0; c < DOF; c++)
@@ -702,7 +702,7 @@ void configSetup() {
     uniqueName = config.getString("ID", "P");
     rebootForWifiManagerQ = config.getBool("WifiManager");
     PT(config.freeEntries());                                 // show remaining entries of the preferences.
-    PTL(" entries are available in the namespace table.\n");  // this method works regardless of the mode in which the
+  PTLF(" entries are available in the namespace table.\n");  // this method works regardless of the mode in which the
                                                               // namespace is opened.
 #endif
     PTHL("Default language: ", defaultLan == 'b' ? " Chinese" : " English");

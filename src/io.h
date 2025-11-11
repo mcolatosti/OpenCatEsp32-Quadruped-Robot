@@ -1,3 +1,5 @@
+#ifndef OPENCAT_IO_H
+#define OPENCAT_IO_H
 #include "soc/gpio_sig_map.h"
 
 // — read master computer’s signals (middle level) —
@@ -12,6 +14,20 @@
 #include <atomic>
 extern std::atomic<bool> webShowAllOutput;
 
+#ifdef BT_BLE
+extern bool deviceConnected;
+extern void bleWrite(String text);
+#endif
+// If BT_SSP is enabled, define SerialBT as a pointer to Serial2 (or another available serial port)
+#ifdef BT_SSP
+extern bool BTconnected;
+#ifndef SerialBT
+#define SerialBT Serial2
+#endif
+// extern HardwareSerial SerialBT; // Removed: not defined in main firmware
+#endif
+
+// Removing duplicate definition of printToAllPorts
 template<typename T>
 void printToAllPorts(T text, bool newLine = true) {
 #ifdef BT_BLE
@@ -26,14 +42,13 @@ void printToAllPorts(T text, bool newLine = true) {
   }
 #endif
 #ifdef WEB_SERVER
-  // If webShowAllOutput is true, always send output to web console.
-  // If false, only send output if cmdFromWeb is true (web command output).
-  if (webShowAllOutput || cmdFromWeb) {
-    if (String(text) != "=") {
-      webResponse += String(text);
-      if (newLine)
-        webResponse += '\n';
-    }
+  // Always send all output to web console
+  if (String(text) != "=") {
+    webResponse += String(text);
+    if (newLine)
+      webResponse += '\n';
+    extern void sendRobotOutput(String output);
+    sendRobotOutput(String(text));
   }
 #endif
   if (moduleActivatedQ[0]) { // serial2
@@ -43,10 +58,11 @@ void printToAllPorts(T text, bool newLine = true) {
       Serial2.println();
     }
   }
-
-  PT(text);
-  if (newLine)
-  {
-    PTL();
+  // Always print to USB serial
+  Serial.print(text);
+  if (newLine) {
+    Serial.println();
   }
 }
+
+#endif // OPENCAT_IO_H

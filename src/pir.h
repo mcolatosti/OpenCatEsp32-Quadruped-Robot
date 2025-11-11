@@ -19,7 +19,7 @@ void pirSetup() {
 }
 void read_PIR() {
   bool currentPIR = analogRead(PIR_PIN) > 3000;
-  PTL(currentPIR);
+  PTLN(currentPIR);
   if (currentPIR && !previousPIR) {
     createPirTask();
     previousPIR = 1;

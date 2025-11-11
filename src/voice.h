@@ -143,7 +143,7 @@ void voiceSetup() {
   PTLF("Init voice");
   listLength = min(int(sizeof(customizedCmdList) / sizeof(customizedCmdList[0])), MAX_CUSTOMIZED_CMD);
   PTF("Number of customized voice commands on the main board: ");
-  PTL(listLength);
+  PTLN(listLength);
   beginVoiceSerial();
   if (currentLan != defaultLan) {
     char temp[4] = "XA\0";
@@ -179,7 +179,7 @@ void read_voice() {
       return;
     }
 #endif
-    PTL(raw);
+  PTLN(raw);
     byte index = (byte)raw[2];  // interpret the 3rd byte as integer
     int shift = -1;
     if (index > 10 && index < 61) {

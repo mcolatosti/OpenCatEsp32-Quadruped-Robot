@@ -42,7 +42,7 @@ void shutdownBleServer();
 void shutdownBleClient();
 
 #ifdef BT_SSP
-BluetoothSerial SerialBT;
+
 boolean confirmRequestPending = true;
 boolean BTconnected = false;
 
@@ -51,7 +51,8 @@ void BTConfirmRequestCallback(uint32_t numVal) {
   Serial.print("SSP PIN: ");
   Serial.println(numVal);
   Serial.println("Auto-confirming SSP pairing...");
-  SerialBT.confirmReply(true);    // Auto-confirm pairing request
+  // TODO: BluetoothSerial API not available on HardwareSerial SerialBT. See io.h for SerialBT definition.
+  // SerialBT.confirmReply(true);    // Auto-confirm pairing request
   confirmRequestPending = false;
 }
 
@@ -67,12 +68,16 @@ void BTAuthCompleteCallback(boolean success) {
 }
 
 void blueSspSetup() {
-  SerialBT.enableSSP();
-  SerialBT.onConfirmRequest(BTConfirmRequestCallback);
-  SerialBT.onAuthComplete(BTAuthCompleteCallback);
+  // TODO: BluetoothSerial API not available on HardwareSerial SerialBT. See io.h for SerialBT definition.
+  // SerialBT.enableSSP();
+  // TODO: BluetoothSerial API not available on HardwareSerial SerialBT. See io.h for SerialBT definition.
+  // SerialBT.onConfirmRequest(BTConfirmRequestCallback);
+  // TODO: BluetoothSerial API not available on HardwareSerial SerialBT. See io.h for SerialBT definition.
+  // SerialBT.onAuthComplete(BTAuthCompleteCallback);
   char *sspName = getDeviceName("_SSP");
   PTHL("SSP:\t", sspName);
-  SerialBT.begin(sspName);  // Bluetooth device name
+  // TODO: BluetoothSerial API not available on HardwareSerial SerialBT. See io.h for SerialBT definition.
+  // SerialBT.begin(sspName);  // Bluetooth device name
   delete[] sspName;         // Free the allocated memory
   Serial.println("The SSP device is started, now you can pair it with Bluetooth!");
 }

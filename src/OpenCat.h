@@ -650,9 +650,9 @@ void initRobot() {
   Wire.begin();
   // #endif
   SoftwareVersion = SoftwareVersion + BOARD + "_" + DATE;
-  PTL('k');
+  PTLN('k');
   PTLF("Flush the serial buffer...");
-  PTL("\n* Start *");
+  PTLF("\n* Start *");
   printToAllPorts(MODEL);
   PTF("Software version: ");
   printToAllPorts(SoftwareVersion);
@@ -667,7 +667,7 @@ void initRobot() {
   configSetup();
   PTF("Buzzer volume: ");
   PT(buzzerVolume);
-  PTL("/10");
+  PTLF("/10");
 #ifdef WEB_SERVER
 #if defined(WIFI_MANAGER)
   if (rebootForWifiManagerQ)
@@ -716,7 +716,7 @@ void initRobot() {
 #endif
   // #ifdef VOLTAGE
   //   do {
-  //     PTL("Check battery. You can skip by entering any characters in the Serial Monitor.");
+  //     PTLF("Check battery. You can skip by entering any characters in the Serial Monitor.");
   //     if (Serial.available()) {
   //       Serial.read();  // allow breaking the loop with any serial input
   //       break;
@@ -754,7 +754,7 @@ void initRobot() {
     tQueue->addTask((imuException) ? T_SERVO_CALIBRATE : T_REST, "");
   }
 #endif
-  PTL("Ready!");
+  PTLF("Ready!");
   beep(24, 50);
   idleTimer = millis();
 }

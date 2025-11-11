@@ -88,7 +88,7 @@ void servoSetup() {
 #endif
 
 #ifdef ESP_PWM
-  PTL("Setup ESP32 PWM servo driver...");
+  PTLF("Setup ESP32 PWM servo driver...");
   // Allow allocation of all timers
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);

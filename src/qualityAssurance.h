@@ -38,13 +38,13 @@ void testIMU() {
     intendedIMU = true;
 #endif
   if (!intendedIMU) {
-    PTL("\nNo intented IMU detected!");
+  PTLF("\nNo intented IMU detected!");
     while (1) {
       playMelody(imuBad, sizeof(imuBad) / 2);
       delay(500);
     }
   }
-  PTL("\nIMU test: both mean and standard deviation should be small on Pitch and Roll axis\n");
+  PTLF("\nIMU test: both mean and standard deviation should be small on Pitch and Roll axis\n");
   // delay(1000);
   int count = 100;
   float **history = new float *[2];
@@ -54,7 +54,7 @@ void testIMU() {
     delay(IMU_PERIOD);
     print6Axis();
   }
-  PTL("Test");
+  PTLF("Test");
   for (int t = 0; t < count; t++) {
     while (!imuUpdated)  // lock to prevent reading imu when it's still calculating
       delay(1);
@@ -73,7 +73,7 @@ void testIMU() {
     PT("\tstandard deviation: ");
     PT(dev);
     if (fabs(m) > MEAN_THRESHOLD || dev > STD_THRESHOLD) {
-      PTL("\tFail!");
+  PTLF("\tFail!");
       while (!Serial.available()) {
         playMelody(imuBad1, sizeof(imuBad1) / 2);
         delay(500);
@@ -81,7 +81,7 @@ void testIMU() {
       while (Serial.available())
         Serial.read();
     } else {
-      PTL("\tPass!");
+  PTLF("\tPass!");
       playMelody(imuGood, sizeof(imuGood) / 2);
     }
   }
@@ -99,13 +99,13 @@ bool testIR() {
   int count = 0, right = 0;
   int current = 0;
   int previous = 10;
-  PTL("\nInfrared test: catch at least 6 consecutive signals\n");
+  PTLF("\nInfrared test: catch at least 6 consecutive signals\n");
   while (1) {
     if (count == 10 || millis() - start > 1200 || right > 5) {  // test for 1 second
       PT(right);
       PT("/");
       PT(count);
-      PTL(" good");
+  PTLF(" good");
       if (right > 5)
         return true;
       else
@@ -129,7 +129,7 @@ bool testIR() {
       PT("\tcurrent ");
       PT(current);
       PT("\tright ");
-      PTL(right);
+  PTLN(right);
       previous = (current == 20) ? 10 : current;
       count++;
       //      beep(current, 10);
@@ -148,11 +148,11 @@ void testDcDc() {
     float voltageMeasured = (adcValue / float(adcMaxValue)) * vRef;
     float voltageInput = voltageMeasured * (R1 + R2) / R2;
     if (voltageInput < 5.2) {
-      PTL("Wrong DcDc output!");
+  PTLF("Wrong DcDc output!");
       playMelody(DcDcBad, sizeof(DcDcBad) / 2);
       delay(500);
     } else {
-      PTL("\tDcDc Pass!");
+  PTLF("\tDcDc Pass!");
       playMelody(DcDcGood, sizeof(DcDcGood) / 2);
       break;
     }
@@ -166,9 +166,9 @@ void QA() {
     config.putBool("bootSndState", 1);
 #endif
 #ifndef AUTO_INIT
-    PTL("Run factory quality assurance program? (Y/n)");
+  PTLF("Run factory quality assurance program? (Y/n)");
     char choice = getUserInputChar(5);  // auto skip in 5 seconds
-    PTL(choice);
+  PTLN(choice);
     if (choice == 'Y' || choice == 'y')
 #endif
     {
@@ -179,18 +179,18 @@ void QA() {
       testIMU();
 #endif
       // tests...
-      PTL("\nServo test: all servos should rotate and in sync\n");
+  PTLF("\nServo test: all servos should rotate and in sync\n");
       loadBySkillName("ts");  // test EEPROM
       while (!Serial.available()) {
         skill->perform();
 #ifdef IR_PIN
         if (testIR()) {
 #endif
-          PTL("Pass");
+          PTLF("Pass");
           break;
 #ifdef IR_PIN
         } else {
-          PTL("Fail");
+          PTLF("Fail");
           beep(8, 50);
         }
 #endif

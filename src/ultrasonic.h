@@ -31,7 +31,7 @@ void logoColor() {
 }
 void rgbUltrasonicSetup() {
   ultrasonic.SetupLED();
-  PTL("Show Petoi Logo color");
+  PTLF("Show Petoi Logo color");
   logoColor();
   ultrasonicLEDinitializedQ = true;
 }

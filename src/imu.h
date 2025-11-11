@@ -196,7 +196,7 @@ public:
   // the REALACCEL numbers, but if you then flip it upside-down and do the exact same movement ("up" with respect to
   // you), you'll get exactly the same numbers as before, even though the sensor itself is upside-down.
   void calibrateMPU() {
-    PTL("MPU6050 calibration started");
+  PTLF("MPU6050 calibration started");
     
     // wait for other I2C devices to be idle
     while (imuLockI2c || gestureLockI2c) delay(1);
@@ -206,7 +206,7 @@ public:
     CalibrateGyro(20);
     
 #ifdef I2C_EEPROM_ADDRESS
-    PTL("Writing MPU6050 calibration data...");
+  PTLF("Writing MPU6050 calibration data...");
     
     // exclusive mode for writing calibration data
     eepromLockI2c = true;
@@ -280,8 +280,8 @@ public:
       // initialize device
       PTLF("\nInitializing MPU6050...");
 #if defined CONFIG_DISABLE_HAL_LOCKS && CONFIG_DISABLE_HAL_LOCKS == 1
-      PTL("OK");
-      PTL("If the program stucks, reinstall Arduino ESP32 boards version 2.0.12. Newer version may cause bugs!");
+  PTLF("OK");
+  PTLF("If the program stucks, reinstall Arduino ESP32 boards version 2.0.12. Newer version may cause bugs!");
 #else
       PTL("If the program stucks, modify the header file:\n  "
           "https://docs.petoi.com/arduino-ide/upload-sketch-for-biboard#sdkconfig.h");
@@ -290,7 +290,7 @@ public:
       // pinMode(INTERRUPT_PIN, INPUT);
       // verify connection
       PTF("- Testing MPU connections...attempt ");
-      PTL(connectAttempt++);
+  PTLN(connectAttempt++);
       delay(500);
     } while (!testConnection());
     PTLF("- MPU6050 connection successful");
@@ -453,7 +453,7 @@ imu42670p icm(Wire, 1);
 
 
 void calibrateICM() {
-  PTL("ICM42670 calibration started");
+  PTLF("ICM42670 calibration started");
   
   // wait for other I2C devices to be idle
   while (imuLockI2c || gestureLockI2c) delay(1);
@@ -471,7 +471,7 @@ void calibrateICM() {
     PT(icm.offset_gyro[1]);
     PT('\t');
     PT(icm.offset_gyro[2]);
-    PTL('\t');
+  PTLF("\t");
     while (!Serial.available()) {
       playMelody(imuBad2, sizeof(imuBad2) / 2);
     }
@@ -480,7 +480,7 @@ void calibrateICM() {
   }
   
 #ifdef I2C_EEPROM_ADDRESS
-  PTL("Writing ICM42670 calibration data...");
+  PTLF("Writing ICM42670 calibration data...");
   
   // exclusive mode for writing calibration data
   eepromLockI2c = true;
@@ -717,10 +717,10 @@ void waitForImuConvergence() {
   int stable_count = 0;
   int iteration = 0;
   
-  PTL("Waiting for IMU convergence...");
+  PTLF("Waiting for IMU convergence...");
   // Wait for taskIMU to start providing stable data
   // No need to lock I2C since we're not directly accessing IMU hardware
-  PTL("Waiting for taskIMU to provide stable data...");
+  PTLF("Waiting for taskIMU to provide stable data...");
   
   // Initial reading from taskIMU processed data
   // Wait for taskIMU to update data at least once
@@ -730,7 +730,7 @@ void waitForImuConvergence() {
   }
   
   if (!imuUpdated) {
-    PTL("Warning: taskIMU data not ready, using current values");
+  PTLF("Warning: taskIMU data not ready, using current values");
   }
   
   // Get initial values from taskIMU processed data
@@ -783,7 +783,7 @@ void waitForImuConvergence() {
       if (converged) {
         stable_count++;
         if (stable_count >= MIN_STABLE_READINGS) {
-          PTL("\nIMU converged successfully");
+          PTLF("\nIMU converged successfully");
           break;
         }
       } else {
@@ -800,10 +800,10 @@ void waitForImuConvergence() {
   }
   
   if (iteration >= MAX_ITERATIONS) {
-    PTL("\nIMU convergence timeout - proceeding anyway");
+  PTLF("\nIMU convergence timeout - proceeding anyway");
   }
   
-  PTL("\nIMU convergence detection completed using taskIMU data");
+  PTLF("\nIMU convergence detection completed using taskIMU data");
 }
 
 void getImuException() {
@@ -944,9 +944,9 @@ void taskCalibrateImuUsingCore0(void *parameter);  // Forward declaration -ee-
 void imuSetup() {
   if (newBoard) {
 #ifndef AUTO_INIT
-    PTL("- Calibrate the Inertial Measurement Unit (IMU)? (Y/n): ");
+  PTLF("- Calibrate the Inertial Measurement Unit (IMU)? (Y/n): ");
     char choice = getUserInputChar();
-    PTL(choice);
+  PTLN(choice);
     if (choice == 'Y' || choice == 'y')
       calibrateQ = true;
     if (calibrateQ) {
@@ -1028,7 +1028,7 @@ void taskCalibrateImuUsingCore0(void *parameter) {
       PT(icm.offset_gyro[1]);
       PT('\t');
       PT(icm.offset_gyro[2]);
-      PTL('\t');
+  PTLF("\t");
       while (!Serial.available()) {
         playMelody(imuBad2, sizeof(imuBad2) / 2);
       }

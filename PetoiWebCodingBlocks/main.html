@@ -118,7 +118,39 @@
   <script>
     // 自定义主题
     // 将函数设为全局可用
+
     window.PetoiAsyncClient = PetoiAsyncClient;
+
+    // --- WebSocket reconnect/failure notifications ---
+    function setupWebSocketReconnectNotifications() {
+      if (!window.petoiClient) return;
+      // Remove previous listeners to avoid duplicates
+      window.petoiClient.eventTarget.removeEventListener('connectionFailed', window._petoiReconnectHandler);
+      window.petoiClient.eventTarget.removeEventListener('maxReconnectAttemptsReached', window._petoiMaxReconnectHandler);
+
+      window._petoiReconnectHandler = function (e) {
+        showNotification(
+          getText('websocketReconnecting') + (e.detail && e.detail.reason ? (': ' + e.detail.reason) : ''),
+          'warning'
+        );
+      };
+      window._petoiMaxReconnectHandler = function () {
+        showNotification(getText('websocketReconnectFailed'), 'error');
+      };
+      window.petoiClient.eventTarget.addEventListener('connectionFailed', window._petoiReconnectHandler);
+      window.petoiClient.eventTarget.addEventListener('maxReconnectAttemptsReached', window._petoiMaxReconnectHandler);
+    }
+
+    // Attach notifications after each PetoiAsyncClient creation
+    const _origPetoiAsyncClient = window.PetoiAsyncClient;
+    window.PetoiAsyncClient = function(...args) {
+      const client = new _origPetoiAsyncClient(...args);
+      setTimeout(() => {
+        window.petoiClient = client;
+        setupWebSocketReconnectNotifications();
+      }, 0);
+      return client;
+    };
 
     // 初始化变量
     var workspace;

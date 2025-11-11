@@ -50,7 +50,7 @@ void read_doubleTouch()
       PT(previousTouchState[1]);
       PT("\tCurrent: ");
       PT(currentTouchState[0]);
-      PTL(currentTouchState[1]);
+  PTLN(currentTouchState[1]);
     }
   }
   for (byte i = 0; i < 2; i++)

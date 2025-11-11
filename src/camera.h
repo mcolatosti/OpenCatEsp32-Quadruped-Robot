@@ -438,7 +438,7 @@ String objectName[] = {"body", "ball"};
 int objectIdx = 0;
 int lastBallType;
 void muCameraSetup() {
-  PTL("Setup Mu3");
+  PTLF("Setup Mu3");
   uint8_t err;
   // initialized MU on the I2C port
   byte trial = 0;
@@ -474,7 +474,7 @@ void muCameraSetup() {
   if (cameraSetupSuccessful)
     (*Mu).VisionBegin(object[objectIdx]);
   else
-    PTL("Failed to initialize the camera!");
+  PTLF("Failed to initialize the camera!");
   noResultTime = millis();
 }
 
@@ -513,7 +513,7 @@ void read_MuCamera() {
       (*Mu).VisionEnd(object[objectIdx]);
       objectIdx = (objectIdx + 1) % (sizeof(object) / 2);
       (*Mu).VisionBegin(object[objectIdx]);
-      PTL(objectName[objectIdx]);
+  PTLN(objectName[objectIdx]);
       noResultTime = millis();
       beep(25, 50, 50, objectIdx + 1);
     }
@@ -604,7 +604,7 @@ typedef Sentry2 Sentry;
 Sentry sentry(SENTRY2_ADDRESS);
 void sentry2CameraSetup() {
   sentry_err_t err = SENTRY_OK;
-  PTL("Waiting for sentry initialize...");
+  PTLF("Waiting for sentry initialize...");
 #ifdef I2C_MODE
   // CAMERA_WIRE.begin();  // join i2c bus (address optional for master)
   /* Use I2C to initialize Sentry. If err returns 0, the initialization is normal, otherwise the corresponding error
@@ -619,7 +619,7 @@ void sentry2CameraSetup() {
     yield();
   }
 #endif  // SERIAL_MODE
-  PTL("Sentry begin Success.");
+  PTLF("Sentry begin Success.");
   err = sentry.VisionBegin(VISION_TYPE);
   PT("sentry.VisionBegin(kVisionFace) ");
   if (err) {

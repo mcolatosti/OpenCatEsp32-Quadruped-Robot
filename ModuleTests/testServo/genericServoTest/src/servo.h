@@ -3,7 +3,7 @@
 #define PT_FMT(s, format) Serial.print(s, format)  // abbreviate print commands
 #define PTL(s) Serial.println(s)
 #define PTF(s) Serial.print(F(s))  //trade flash memory for dynamic memory with F() function
-#define PTLF(s) Serial.println(F(s))
+
 #define PTT(s, delimeter) \
   { \
     Serial.print(s); \

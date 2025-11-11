@@ -19,7 +19,7 @@ public:
   SkillList() {
     PT("Build skill list...");
     //  PT(sizeof(progmemPointer) / MEMORY_ADDRESS_SIZE);
-    PTL(sizeof(skillNameWithType) / MEMORY_ADDRESS_SIZE);
+  PTLN(sizeof(skillNameWithType) / MEMORY_ADDRESS_SIZE);
     for (int s = 0; s < sizeof(progmemPointer) / MEMORY_ADDRESS_SIZE; s++) {
       SkillPreview *tempAddress = new SkillPreview(s);
       this->push_back(tempAddress);
@@ -63,7 +63,7 @@ public:
     }
     PT('?');  // key not found
     PT(key);
-    PTL('?');  // it will print ?? in random mode. Why?
+  PTLF("?");  // it will print ?? in random mode. Why?
     return -1;
   }
 };
@@ -133,7 +133,7 @@ public:
     // PTH("aloShft", BUFF_LEN - (skillHeader + angleLen));
     if (CMD_LEN > spaceAfterStoringData) {
       PTF("LMT ");
-      PTL(spaceAfterStoringData);
+  PTLN(spaceAfterStoringData);
     }
     for (int i = 0; i <= angleLen; i++)
       newCmd[BUFF_LEN - i] = newCmd[skillHeader + angleLen - i];
@@ -175,7 +175,7 @@ public:
 #define PRINT_SKILL_DATA
   void info() {
     PT("Skill Name: ");
-    PTL(skillName);
+  PTLN(skillName);
     PTF("period: ");
     PT(period);
     PT(",\texpected(pitch,roll): (");
@@ -184,7 +184,7 @@ public:
     PT(expectedRollPitch[1]);
     PT(")\t");
     PTF("angleRatio: ");
-    PTL(angleDataRatio);
+  PTLN(angleDataRatio);
     if (period < 0) {
       PT("loop frame: ");
       for (byte i = 0; i < 3; i++)
@@ -343,7 +343,7 @@ public:
               PT(" => ");
               PT(triggerAngle);
               PT(" => ");
-              PTL(currentYpr);
+              PTLN(currentYpr);
               PTLF("Trigger released");
               break;
             }

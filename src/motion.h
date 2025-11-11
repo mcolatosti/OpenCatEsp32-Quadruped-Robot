@@ -875,14 +875,14 @@ void learnByDrag() {
       getReady = 0;
   }
   beep(30, 300);
-  PTL("Start to record motion");
+  PTLF("Start to record motion");
   long idleLearnTimer = millis();
   while (totalFrame < MAX_FRAME                      // not exceed the max frame
          && !Serial.available()                      // not ended by user
          && millis() - idleLearnTimer < IDLE_LEARN)  // not idle for a long time
   {
     if (!(totalFrame % 10))
-      PTL(totalFrame);
+  PTLN(totalFrame);
     readAllFeedbackFast();
     int diff = 0;
     for (int i = 0; i < 11; i++) {
@@ -913,7 +913,7 @@ void performLearn() {
   int target[DOF];
   for (int i = 0; i < DOF; i++)
     target[i] = currentAng[i];
-  PTL('{');
+  PTLF("{");
   PTTL(-totalFrame, ",0,0,1,\n0,0,0,");
   for (int f = 0; f < totalFrame; f++) {
     for (int i = 0; i < 11; i++) {
@@ -923,8 +923,8 @@ void performLearn() {
       if (i == 2)
         PT("0,0,0,0,0,\t");
     }
-    PTL("8,0,0,0,");
+  PTLF("8,0,0,0,");
     transform(target, 1, 2);
   }
-  PTL("};");
+  PTLF("};");
 }

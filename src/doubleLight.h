@@ -126,25 +126,25 @@ void calib_light(int angle, double result[2])  //get the parameters of the calib
   L_F(data1, datANALOG1, 3, result);
 
   /* the following code is used for debug 
-   Serial.print(data1[0]);
-   Serial.print('\t');
-   Serial.print(data1[1]);
-   Serial.print('\t');
-   Serial.print(data1[2]);
-   Serial.print('\n');
-   Serial.print(datANALOG1[0]);
-   Serial.print('\t');
-   Serial.print(datANALOG1[1]);
-   Serial.print('\t');
-   Serial.print(datANALOG1[2]);
-   //Serial.print((datANALOG1[0]+datANALOG1[1])/2);
-   Serial.print('\n');
-   Serial.print(result[0]);
-   Serial.print('\t');
-   Serial.print(result[1]);
-   Serial.print('\t');
-   Serial.print((datANALOG1[0]+datANALOG1[1])/2);
-   Serial.print('\n');
+   SerialFork.print(data1[0]);
+   SerialFork.print('\t');
+   SerialFork.print(data1[1]);
+   SerialFork.print('\t');
+   SerialFork.print(data1[2]);
+   SerialFork.print('\n');
+   SerialFork.print(datANALOG1[0]);
+   SerialFork.print('\t');
+   SerialFork.print(datANALOG1[1]);
+   SerialFork.print('\t');
+   SerialFork.print(datANALOG1[2]);
+   //SerialFork.print((datANALOG1[0]+datANALOG1[1])/2);
+   SerialFork.print('\n');
+   SerialFork.print(result[0]);
+   SerialFork.print('\t');
+   SerialFork.print(result[1]);
+   SerialFork.print('\t');
+   SerialFork.print((datANALOG1[0]+datANALOG1[1])/2);
+   SerialFork.print('\n');
    */
 }
 double light_correct(int ANALOG1_tocorrect, double result[2]) {
@@ -330,27 +330,27 @@ void read_doubleLight()  //  when using the Photoresistors, add this function to
   pid_reset();
   //the following code is used for debugging
 
-  Serial.print(analogRead(ANALOG1));
-  Serial.print('\t');
-  Serial.print(analogRead(ANALOG2));
-  Serial.print('\t');
+  SerialFork.print(analogRead(ANALOG1));
+  SerialFork.print('\t');
+  SerialFork.print(analogRead(ANALOG2));
+  SerialFork.print('\t');
 
-  Serial.print(result[0]);
-  Serial.print('\t');
+  SerialFork.print(result[0]);
+  SerialFork.print('\t');
 
-  Serial.print(analogRead(ANALOG1) / rate * result[0] + result[1]);
-  Serial.print('\t');
-  Serial.print(analogRead(ANALOG2) / rate);
-  Serial.print('\t');
-  Serial.print(ANALOG1_max);
-  Serial.print('\t');
-  Serial.print(ANALOG2_max);
-  Serial.print('\t');
-  Serial.print(errorLight);
-  Serial.print('\t');
-  Serial.print(output);
-  Serial.print('\t');
-  Serial.print('\n');
+  SerialFork.print(analogRead(ANALOG1) / rate * result[0] + result[1]);
+  SerialFork.print('\t');
+  SerialFork.print(analogRead(ANALOG2) / rate);
+  SerialFork.print('\t');
+  SerialFork.print(ANALOG1_max);
+  SerialFork.print('\t');
+  SerialFork.print(ANALOG2_max);
+  SerialFork.print('\t');
+  SerialFork.print(errorLight);
+  SerialFork.print('\t');
+  SerialFork.print(output);
+  SerialFork.print('\t');
+  SerialFork.print('\n');
 }
 
 #else  // simple feedback reaction
@@ -384,7 +384,7 @@ void read_doubleLight() {
   if (maxL < -5) {
     tQueue->addTask('k', "bk", 2000);  // jigs when entering this case for the 2nd time. ???
     tQueue->addTask('k', "up");        // jigs when entering this case for the 2nd time. ???
-    PTL(tQueue->size());
+  PTLN(tQueue->size());
   } else if (maxL < 300) {
     actualOffset = (last + clippedOffset) / 2;
     actualOffset = max(min(actualOffset, MAX_PANNING), -MAX_PANNING);
@@ -394,7 +394,7 @@ void read_doubleLight() {
     last = actualOffset;
     cmdLen = 2;
     newCmdIdx = 5;
-    PTL(actualOffset);
+  PTLN(actualOffset);
   }
 }
 #endif

@@ -13,11 +13,11 @@ void dealWithExceptions() {
 
   // Handle turning exception regardless of gyroBalanceQ status
   if (imuException == IMU_EXCEPTION_TURNING) {
-    PTL("EXCEPTION: turning target reached");
+  PTLF("EXCEPTION: turning target reached");
     // Stop the robot and make it stand up
     tQueue->addTask('k', "up");
     needTurning = false;  // Reset flag after creating task
-    PTL("endTurn");
+  PTLF("endTurn");
     prev_imuException = imuException;
     print6Axis();
   }
@@ -44,7 +44,7 @@ void dealWithExceptions() {
           }
         case IMU_EXCEPTION_FREEFALL:
           {
-            PTL("EXCEPTION free fall");
+            PTLF("EXCEPTION free fall");
             strcpy(newCmd, "lnd");
             loadBySkillName(newCmd);
             shutServos();  // does not shut the P1S servo.while token p in serial monitor can.? ? ?
@@ -56,7 +56,7 @@ void dealWithExceptions() {
           }
         case IMU_EXCEPTION_FLIPPED:
           {
-            PTL("EXCEPTION: Fall over");
+            PTLF("EXCEPTION: Fall over");
             soundFallOver();
             //  for (int m = 0; m < 2; m++)
             //    meow(30 - m * 12, 42 - m * 12, 20);
@@ -70,7 +70,7 @@ void dealWithExceptions() {
         case IMU_EXCEPTION_KNOCKED:
           {
             if (tQueue->cleared() && skill->period == 1) {
-              PTL("EXCEPTION: Knocked");
+              PTLF("EXCEPTION: Knocked");
               tQueue->addTask('k', "knock");
 #if defined NYBBLE && defined ULTRASONIC
               if (!moduleActivatedQ[0]) {  // serial2 may be used to connect serial2 rather than the RGB ultraconic sensor
@@ -86,7 +86,7 @@ void dealWithExceptions() {
           }
         case IMU_EXCEPTION_PUSHED:
           {
-            PTL("EXCEPTION: Pushed");
+            PTLF("EXCEPTION: Pushed");
             // Acceleration Real
             //      ^ head
             //        ^ x+
@@ -133,7 +133,7 @@ void dealWithExceptions() {
           }
         case IMU_EXCEPTION_OFFDIRECTION:
           {
-            PTL("EXCEPTION: off direction");
+            PTLF("EXCEPTION: off direction");
             // char *currentGait = skill->skillName;  // it may not be gait
             // char gaitDirection = currentGait[strlen(currentGait) - 1];
             float yawDiff = int(ypr[0] - previous_ypr[0]) % 180;
@@ -260,9 +260,11 @@ bool lowBattery() {
         safeRest = true;
       }
       if (!batteryWarningCounter) {
-        PTF("Low power: ");
-        PT(voltage);
-        PTLF("V. The robot won't move.");
+        {
+          char buf[64];
+          snprintf(buf, sizeof(buf), "Low power: %.2fV. The robot won't move.", voltage);
+          PTLF(buf);
+        }
         PTLF("Long-press the battery's button to turn it on!");
 #ifdef I2C_EEPROM_ADDRESS
         if (i2c_eeprom_read_byte(EEPROM_BOOTUP_SOUND_STATE))
@@ -314,13 +316,13 @@ bool lowBattery() {
       //   PTL("Got 6.0 V power");
       PT("Got ");
       PT(voltage);
-      PTL(" V power");
+  PTLF(" V power");
       playMelody(melodyOnBattery, sizeof(melodyOnBattery) / 2);
       lowBatteryQ = false;
       batteryWarningCounter = 0;
       
       // Reactivate PWM signals to fix servo non-responsiveness after battery power restoration
-      PTL("Reactivating servo PWM signals after power restoration...");
+  PTLF("Reactivating servo PWM signals after power restoration...");
 #ifdef ESP_PWM
       // Simply resend PWM signals for current positions
       for (int c = 0; c < PWM_NUM; c++) {
@@ -397,9 +399,30 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
     switch (token) {
       case T_HELP_INFO:
         {
-          PTLF("* Please refer to docs.petoi.com.\nEnter any character to continue.");
-          while (!Serial.available())
-            ;
+          printToAllPorts("=== OPENCAT ROBOT COMMANDS ===\n");
+          printToAllPorts("d: Rest (all servos off)\n");
+          printToAllPorts("g: Toggle gyro/IMU\n");
+          printToAllPorts("j: Show all joint angles\n");
+          printToAllPorts("P: Show battery voltage\n");
+          printToAllPorts("i: Set joint positions\n");
+          printToAllPorts("c: Calibrate IMU\n");
+          printToAllPorts("b: Play beep/melody\n");
+          printToAllPorts("u: Meow sound\n");
+          printToAllPorts("XCP: Camera extension\n");
+          printToAllPorts("XCR: Reactions extension\n");
+          printToAllPorts("i0 45: Move joint 0 to 45deg\n");
+          printToAllPorts("h/help: Show this help\n");
+          // List all skills
+          // (skills list removed from serial help output)
+          // List custom/voice commands
+          extern String customizedCmdList[];
+          extern int listLength;
+          printToAllPorts("CUSTOM/VOICE COMMANDS:\n");
+          for (int i = 0; i < listLength; i++) {
+            printToAllPorts("  ");
+            printToAllPorts(customizedCmdList[i]);
+            printToAllPorts("\n");
+          }
           break;
         }
       case T_QUERY:
@@ -1004,7 +1027,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
 #endif
                   PTF("Changing volume to ");
                   PT(buzzerVolume);
-                  PTL("/10");
+                  PTLF("/10");
                   playMelody(volumeTest, sizeof(volumeTest) / 2);
                 } else if (target[1] > 0) {
                   beep(target[0], 1000 / target[1]);
@@ -1016,7 +1039,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                   *par[target[0]] = target[1];
                   PT(target[0]);
                   PT('\t');
-                  PTL(target[1]);
+                  PTLN(target[1]);
                 }
               }
 #endif
@@ -1344,7 +1367,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             if (num > 2500 && num < 4000) {
               feedbackSignal = num;
               PTF("Change feedback signal to ");
-              PTL(feedbackSignal);
+              PTLN(feedbackSignal);
             } else {
               measureServoPin = num;
               PTHL("read pin", num);
@@ -1472,7 +1495,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                   tQueue->addTask('k', "up");
                   PTH("Time-based mode: ", taskCmd);
                   PTHL(" for ", timeOrAngle);
-                  PTL(" ms");
+                  PTLF(" ms");
                 }
               } else if (lastChar == 'L' || lastChar == 'R') {
                 // Turning gait - set up turning control

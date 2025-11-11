@@ -39,7 +39,7 @@ void loop() {
   PT('\t');
   PT(500);
   PT('\t');
-  PTL(voltage);//relative voltage
+  PTLF(voltage);//relative voltage
   if (voltage < 650 ) { //give the cat a break when voltage drops after sprint
     //adjust the thresholds according to your batteries' voltage
     //if set too high, the robot will keep crying.

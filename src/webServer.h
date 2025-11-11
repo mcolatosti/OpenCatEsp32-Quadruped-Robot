@@ -18,7 +18,7 @@
 // Debug print macros - controlled by level
 #if WEB_DEBUG_LEVEL >= 1
   #define WEB_ERROR(msg, value) PTHL(msg, value)
-  #define WEB_ERROR_F(msg) PTLF(msg)
+  #define WEB_ERROR_F(msg) PTLN(msg)
 #else
   #define WEB_ERROR(msg, value)
   #define WEB_ERROR_F(msg)
@@ -26,7 +26,7 @@
 
 #if WEB_DEBUG_LEVEL >= 2
   #define WEB_WARN(msg, value) PTHL(msg, value)
-  #define WEB_WARN_F(msg) PTLF(msg)
+  #define WEB_WARN_F(msg) PTLN(msg)
 #else
   #define WEB_WARN(msg, value)
   #define WEB_WARN_F(msg)
@@ -34,7 +34,7 @@
 
 #if WEB_DEBUG_LEVEL >= 3
   #define WEB_INFO(msg, value) PTHL(msg, value)
-  #define WEB_INFO_F(msg) PTLF(msg)
+  #define WEB_INFO_F(msg) PTLN(msg)
 #else
   #define WEB_INFO(msg, value)
   #define WEB_INFO_F(msg)
@@ -42,7 +42,7 @@
 
 #if WEB_DEBUG_LEVEL >= 4
   #define WEB_DEBUG(msg, value) PTHL(msg, value)
-  #define WEB_DEBUG_F(msg) PTLF(msg)
+  #define WEB_DEBUG_F(msg) PTLN(msg)
 #else
   #define WEB_DEBUG(msg, value)
   #define WEB_DEBUG_F(msg)
@@ -206,19 +206,19 @@ void checkConnectionHealth() {
         "{\"type\":\"error\",\"error\":\"Heartbeat timeout\"}";
       sendSocketResponse(clientId, timeoutMsg);
       
-      // Disconnect connection
-      webSocket.disconnect(clientId);
-      
-      // Clean up client state
-      connectedClients.erase(clientId);
-      it = lastHeartbeat.erase(it);
-      
+  // Disconnect connection (handled by library on timeout)
+  // webSocket.disconnect(clientId); // Disabled to avoid double-disconnect heap error
+
       // If current task belongs to this client, need to handle it
       if (webTaskActive && currentWebTaskId != "" && 
           webTasks.find(currentWebTaskId) != webTasks.end() && 
           webTasks[currentWebTaskId].clientId == clientId) {
         errorWebTask("Client disconnected due to heartbeat timeout");
       }
+
+      // Clean up client state AFTER all messaging and cleanup
+      connectedClients.erase(clientId);
+      it = lastHeartbeat.erase(it);
     } else {
       ++it;
     }
@@ -336,19 +336,25 @@ void notifyJointChange() {
 
 void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
+
     case WStype_DISCONNECTED:
+      Serial.println("[DEBUG] Entering WStype_DISCONNECTED handler");
       WEB_ERROR("WebSocket client disconnected: ", num);
-      
-      // Clean up client state
-      connectedClients.erase(num);
-      lastHeartbeat.erase(num);
-      
+
       // If current task belongs to this client, need to handle it
       if (webTaskActive && currentWebTaskId != "" && 
           webTasks.find(currentWebTaskId) != webTasks.end() && 
           webTasks[currentWebTaskId].clientId == num) {
+        Serial.println("[DEBUG] Calling errorWebTask from disconnect");
         errorWebTask("Client disconnected");
+        Serial.println("[DEBUG] Returned from errorWebTask");
       }
+
+      // Clean up client state at the very end
+      connectedClients.erase(num);
+      lastHeartbeat.erase(num);
+      Serial.println("[DEBUG] Cleaned up client state");
+      Serial.println("[DEBUG] Exiting WStype_DISCONNECTED handler");
       break;
       
     case WStype_CONNECTED:
@@ -370,34 +376,34 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
       
     case WStype_TEXT: {
       String message = String((char*)payload);
-      
       // Parse JSON message
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, message);
-      
       if (error) {
         // JSON parse error, send error response
         sendSocketResponse(num, "{\"type\":\"error\",\"error\":\"Invalid JSON format\"}");
         return;
       }
-
       String msgType = doc["type"].as<String>();
-              WEB_DEBUG("msg type: ", msgType);
-      
+      WEB_DEBUG("msg type: ", msgType);
       // Handle heartbeat messages
       if (doc["type"] == "heartbeat") {
         lastHeartbeat[num] = millis();
         sendSocketResponse(num, "{\"type\":\"heartbeat\",\"timestamp\":" + String(millis()) + "}");
         return;
       }
-
+      // Handle keep-alive ping messages
+      if (doc["type"] == "ping") {
+        lastHeartbeat[num] = millis();
+        // No pong response needed
+        return;
+      }
       // Handle system information requests
       if (doc["type"] == "get_system_info") {
         lastHeartbeat[num] = millis();
         sendSystemInfo();
         return;
       }
-
       // Handle joint refresh requests
       if (doc["type"] == "get_joints") {
         lastHeartbeat[num] = millis();
@@ -405,18 +411,14 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
         sendSocketResponse(num, jointData);
         return;
       }
-
       // Handle command messages (unified command group format)
       if (doc["type"] == "command") {
         String taskId = doc["taskId"].as<String>();
         JsonArray commands;
-        
         // If it's a single command, convert to command group format
         commands = doc["commands"].as<JsonArray>();
-        
         // Update heartbeat time
         lastHeartbeat[num] = millis();
-        
         // Create task record
         WebTask task;
         task.taskId = taskId;
@@ -426,12 +428,10 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
         task.resultReady = false;
         task.clientId = num;
         task.currentCommandIndex = 0;
-        
         // Store command group
         for (JsonVariant cmd : commands) {
           task.commandGroup.push_back(cmd.as<String>());
         }
-        
         // Debug information
                   WEB_DEBUG("Received command task: ", taskId);
           WEB_DEBUG("Command count: ", task.commandGroup.size());
@@ -466,7 +466,7 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
         String msg = webShowAllOutput ? "[Web Console] Output mode: Show ALL output" : "[Web Console] Output mode: Show only web command output";
         sendRobotOutput(msg);
         // Debug: also print to serial
-        PTL("[DEBUG] Output mode toggled. webShowAllOutput=" + String(webShowAllOutput ? "true" : "false"));
+  PTLN("[DEBUG] Output mode toggled. webShowAllOutput=" + String(webShowAllOutput ? "true" : "false"));
         return;
       }
       break;
@@ -612,7 +612,9 @@ void completeWebTask()
 // Web task error handling
 void errorWebTask(String errorMessage)
 {
+  Serial.println("[DEBUG] Entering errorWebTask");
   if (!webTaskActive || currentWebTaskId == "") {
+    Serial.println("[DEBUG] errorWebTask: No active web task");
     return;
   }
 
@@ -630,7 +632,9 @@ void errorWebTask(String errorMessage)
     String statusMsg;
     serializeJson(errorDoc, statusMsg);
     sendSocketResponse(task.clientId, statusMsg);
+    Serial.println("[DEBUG] Sent error status to client");
     clearWebTask(currentWebTaskId);
+    Serial.println("[DEBUG] Cleared web task");
   }
 
   // Reset state
@@ -639,7 +643,9 @@ void errorWebTask(String errorMessage)
   currentWebTaskId = "";
 
   // Process next task
+  Serial.println("[DEBUG] Calling processNextWebTask");
   processNextWebTask();
+  Serial.println("[DEBUG] Exiting errorWebTask");
 }
 
 void clearWebTask(String taskId)
@@ -684,7 +690,7 @@ bool connectWifi(String ssid, String password, int maxRetries = 3)
       timeout++;
     }
     #if WEB_DEBUG_LEVEL >= 3
-    PTL();
+  PTL();
     #endif
     
     if (WiFi.status() == WL_CONNECTED) {
@@ -741,7 +747,7 @@ bool connectWifiFromStoredConfig()
     webSocket.begin();
     webSocket.onEvent(handleWebSocketEvent);
     // Enable heartbeat with longer timeout (30 seconds)
-    webSocket.enableHeartbeat(15000, 3000, 2); // ping every 15s, pong timeout 3s, max 2 missed
+  webSocket.enableHeartbeat(60000, 10000, 10); // ping every 60s, pong timeout 10s, allow 10 missed pongs
     WEB_INFO_F("WebSocket server started with heartbeat enabled");
     
     // Start HTTP server
@@ -781,7 +787,7 @@ void startWifiManager() {
     webSocket.begin();
     webSocket.onEvent(handleWebSocketEvent);
     // Enable heartbeat with longer timeout (30 seconds)
-    webSocket.enableHeartbeat(15000, 3000, 2); // ping every 15s, pong timeout 3s, max 2 missed
+  webSocket.enableHeartbeat(60000, 10000, 10); // ping every 60s, pong timeout 10s, allow 10 missed pongs
     WEB_INFO_F("WebSocket server started with heartbeat enabled");
     
     // Start HTTP server
@@ -1030,20 +1036,38 @@ void handleCommand() {
     response += "\n";
     
     // Add comprehensive help if requested
-    if (command == "h") {
-      // Check memory before building large help string
+    if (command == "h" || command == "help") {
       if (ESP.getFreeHeap() < 20000) {
         response += "Help available - use WebSocket console for full help (insufficient memory for HTTP help)";
       } else {
         response += "=== OPENCAT ROBOT COMMANDS ===\n\n";
-        response += "MOVEMENT SKILLS:\n";
-        response += "  ksit, kup, krest, kwkF, kwkB, kwkL, kwkR, ktr, kcr, kpd\n\n";
-        response += "SYSTEM COMMANDS:\n";
-        response += "  d (rest), g (gyro), j (joints), P (battery), i (head), c (calibrate)\n\n";
+        // List all skills
+        extern const char* skillNameWithType[];
+        response += "SKILLS (use k<skill> to run):\n  ";
+        int skillIdx = 0;
+        while (true) {
+          const char* skill = skillNameWithType[skillIdx];
+          if (!skill) break;
+          response += skill;
+          skillIdx++;
+          if (skillNameWithType[skillIdx]) response += ", ";
+        }
+        response += "\n\n";
+        // List system commands
+        response += "SYSTEM COMMANDS:\n  d (rest), g (gyro), j (joints), P (battery), i (head), c (calibrate)\n\n";
+        // List sound/extension commands
         response += "SOUND: b (beep), u (meow)\n";
         response += "EXTENSIONS: XCP (camera), XCR (reactions)\n";
         response += "JOINTS: i0 45 (move joint 0 to 45deg)\n\n";
-        response += "Use WebSocket for real-time feedback and detailed help.\n";
+        // List custom/voice commands
+        extern String customizedCmdList[];
+        extern int listLength;
+        response += "CUSTOM/VOICE COMMANDS:\n  ";
+        for (int i = 0; i < listLength; i++) {
+          response += customizedCmdList[i];
+          if (i < listLength - 1) response += ", ";
+        }
+        response += "\n\nUse WebSocket for real-time feedback and detailed help.\n";
       }
     }
     
