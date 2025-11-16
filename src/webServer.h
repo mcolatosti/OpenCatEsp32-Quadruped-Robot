@@ -918,23 +918,62 @@ void handleConsole() {
 #out{height:85vh;overflow-y:auto;border:1px solid #444;padding:5px;background:#111}
 #cmd{width:60%;padding:5px;background:#222;color:#0f0;border:1px solid #444}
 .btn{padding:4px 8px;margin:2px;background:#333;color:#0f0;border:1px solid #444;cursor:pointer}
-.btn:hover{background:#444}</style></head><body>
+.btn:hover{background:#444}
+.help-pane{flex:1;min-width:180px;max-width:260px;background:#111;border:1px solid #444;padding:10px;margin-left:10px;font-size:14px;overflow-y:auto}
+</style></head><body>
 <h3>OpenCat Console <span id="status" style="color:#ff0">*</span></h3>
 <div style="display:flex;gap:10px">
-<div style="flex:2">
-<div id="out">Ready. Free: )rawliteral" + String(freeHeap) + R"rawliteral( bytes<br></div>
-<input id="cmd" placeholder="Enter command...">
-<button class="btn" onclick="send()">Send</button>
-<button class="btn" onclick="clear()">Clear</button><br>
-<button class="btn" onclick="q('ksit')">Sit</button>
-<button class="btn" onclick="q('kup')">Up</button>
-<button class="btn" onclick="q('d')">Rest</button>
-<button class="btn" onclick="q('h')">Help</button>
-
+  <div style="flex:2">
+    <div id="out">Ready. Free: )rawliteral" + String(freeHeap) + R"rawliteral( bytes<br></div>
+    <input id="cmd" placeholder="Enter command...">
+    <button class="btn" onclick="send()">Send</button>
+    <button class="btn" onclick="clear()">Clear</button><br>
+    <button class="btn" onclick="q('ksit')">Sit</button>
+    <button class="btn" onclick="q('kup')">Up</button>
+    <button class="btn" onclick="q('d')">Rest</button>
+    <button class="btn" onclick="q('h')">Help</button>
+  </div>
+  <div class="help-pane">
+    <b>Help & Commands</b><hr style="border:1px solid #222">
+    <ul style="padding-left:18px;margin:0">
+  <li><b>wkF</b>: Walk forward</li>
+  <li><b>bk</b>: Walk backward</li>
+  <li><b>tbl</b>: Turn body left</li>
+  <li><b>str</b>: Stretch</li>
+  <li><b>pu</b>: Push up</li>
+  <li><b>rol</b>: Roll</li>
+  <li><b>hi</b>: Say hi</li>
+  <li><b>ksit</b>: Sit down</li>
+  <li><b>kup</b>: Stand up</li>
+      <li><b>d</b>: Rest (power off servos)</li>
+      <li><b>h</b>: Show help</li>
+      <li><b>g</b>: Toggle gyro/IMU</li>
+      <li><b>j</b>: Show joint angles</li>
+      <li><b>P</b>: Show battery voltage</li>
+      <li><b>c</b>: Calibrate servos</li>
+      <li><b>f</b>: Servo feedback</li>
+      <li><b>l</b>: Adjust balance slope</li>
+      <li><b>n</b>: Set Bluetooth name</li>
+      <li><b>u</b>: Meow (sound)</li>
+      <li><b>w</b>: WiFi info</li>
+      <li><b>z</b>: Toggle random mind</li>
+      <li><b>R</b>: Robot arm control</li>
+      <li><b>s</b>: Save settings</li>
+      <li><b>t</b>: Tilt</li>
+      <li><b>?</b>: Query status</li>
+      <li><b>!</b>: Reset</li>
+      <li><b>X...</b>: Extension/module command</li>
+    </ul>
+    <div style="margin:10px 0 4px 0;font-size:13px;color:#0ff"><b>Active Modules:</b></div>
+    <ul style="padding-left:18px;margin:0">
+      <li>Voice</li>
+      <li>BackTouch</li>
+      <li>Ultrasonic</li>
+      <!-- Add more modules as detected/activated in code -->
+    </ul>
+    <div style="margin-top:8px;font-size:12px;color:#aaa">Type a command or use the buttons.<br>See documentation for more.<br>Module commands: <b>X</b> + module code (see docs).</div>
+  </div>
 </div>
-
-
-
 
 <script>
 // Client-side keep-alive ping to keep WebSocket connection active
