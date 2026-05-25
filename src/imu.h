@@ -283,8 +283,8 @@ public:
   PTLF("OK");
   PTLF("If the program stucks, reinstall Arduino ESP32 boards version 2.0.12. Newer version may cause bugs!");
 #else
-      PTL("If the program stucks, modify the header file:\n  "
-          "https://docs.petoi.com/arduino-ide/upload-sketch-for-biboard#sdkconfig.h");
+      PTLF("If the program stucks, modify the header file:");
+      PTLF("  https://docs.petoi.com/arduino-ide/upload-sketch-for-biboard#sdkconfig.h");
 #endif
       initialize();
       // pinMode(INTERRUPT_PIN, INPUT);

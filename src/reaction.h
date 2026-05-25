@@ -400,24 +400,28 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       case T_HELP_INFO:
         {
           printToAllPorts("=== OPENCAT ROBOT COMMANDS ===\n");
-          printToAllPorts("d: Rest (all servos off)\n");
-          printToAllPorts("g: Toggle gyro/IMU\n");
-          printToAllPorts("j: Show all joint angles\n");
-          printToAllPorts("P: Show battery voltage\n");
-          printToAllPorts("i: Set joint positions\n");
-          printToAllPorts("c: Calibrate IMU\n");
-          printToAllPorts("b: Play beep/melody\n");
-          printToAllPorts("u: Meow sound\n");
-          printToAllPorts("XCP: Camera extension\n");
-          printToAllPorts("XCR: Reactions extension\n");
-          printToAllPorts("i0 45: Move joint 0 to 45deg\n");
-          printToAllPorts("h/help: Show this help\n");
-          // List all skills
-          // (skills list removed from serial help output)
+          printToAllPorts("\n--- MOVEMENT (prefix with k) ---\n");
+          printToAllPorts("kwkF: Walk forward    kwkL: Walk left    kwkR: Walk right\n");
+          printToAllPorts("kbk:  Walk backward   kbkL: Back left    kbkR: Back right\n");
+          printToAllPorts("ktrF: Trot forward    ktrL: Trot left    ktrR: Trot right\n");
+          printToAllPorts("kcrF: Crawl forward   kcrL: Crawl left   kcrR: Crawl right\n");
+          printToAllPorts("kvtF: Step forward    kvtL: Step left\n");
+          printToAllPorts("ktbl: Table\n");
+          printToAllPorts("\n--- POSTURES (prefix with k) ---\n");
+          printToAllPorts("ksit: Sit    kup: Stand    krest: Rest    kbalance: Balance\n");
+          printToAllPorts("kstr: Stretch    kbuttUp: Butt up    kzero: Zero position\n");
+          printToAllPorts("\n--- SYSTEM ---\n");
+          printToAllPorts("d: Rest (servos off)    p: Pause/Resume\n");
+          printToAllPorts("g: Toggle gyro    j: Joint angles    P: Battery voltage\n");
+          printToAllPorts("i0 45: Move joint 0 to 45deg    c: Calibrate\n");
+          printToAllPorts("b: Beep    u: Meow    n: Set BT name\n");
+          printToAllPorts("!: Reset    ?: Query status    h: This help\n");
+          printToAllPorts("\n--- EXTENSIONS ---\n");
+          printToAllPorts("X...: Module command (XCP: Camera, XCR: Reactions)\n");
           // List custom/voice commands
           extern String customizedCmdList[];
           extern int listLength;
-          printToAllPorts("CUSTOM/VOICE COMMANDS:\n");
+          printToAllPorts("\nCUSTOM/VOICE COMMANDS:\n");
           for (int i = 0; i < listLength; i++) {
             printToAllPorts("  ");
             printToAllPorts(customizedCmdList[i]);

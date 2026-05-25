@@ -129,6 +129,7 @@ void handleNotFound();
 // Enhanced output capture functions
 void sendRobotOutput(String output);
 void sendSystemInfo();
+void sendTelemetry();
 
 // Simple Base64 decoding function
 String base64Decode(String input) {
@@ -372,6 +373,12 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
       
       // Send connection success response
       sendSocketResponse(num, "{\"type\":\"connected\",\"clientId\":\"" + String(num) + "\"}");
+      
+      // Send current joint positions immediately on connect
+      {
+        String jointData = "{\"type\":\"joint_data\"," + getJointAnglesJson().substring(1);
+        webSocket.sendTXT(num, jointData);
+      }
       break;
       
     case WStype_TEXT: {
@@ -526,6 +533,7 @@ void startWebTask(String taskId)
         token = webCmd[0];
         strcpy(newCmd, webCmd.c_str() + 1);
         cmdLen = strlen(newCmd);
+        leftTrimSpaces(newCmd, &cmdLen);  // allow space between token and parameters, such as "k sit"
         newCmd[cmdLen + 1] = '\0';
         
                   WEB_DEBUG("Parsed token: ", token);
@@ -874,6 +882,9 @@ void WebServerLoop()
     sendJointUpdateIfChanged();
   }
   
+  // TELEMETRY: Send periodic IMU/battery data
+  sendTelemetry();
+  
   // Handle HTTP server requests
   httpServer.handleClient();
 }
@@ -914,91 +925,333 @@ void handleConsole() {
   }
   
   String html = R"rawliteral(<!DOCTYPE html><html><head><title>OpenCat Console</title>
-<style>html,body{height:100%;margin:0;padding:10px;box-sizing:border-box;font-family:monospace;background:#000;color:#0f0}
-#out{height:85vh;overflow-y:auto;border:1px solid #444;padding:5px;background:#111}
-#cmd{width:60%;padding:5px;background:#222;color:#0f0;border:1px solid #444}
-.btn{padding:4px 8px;margin:2px;background:#333;color:#0f0;border:1px solid #444;cursor:pointer}
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
+.top-panel{height:40vh;display:flex;border-bottom:2px solid #444;padding:8px;gap:8px}
+.bot-panel{height:60vh;display:flex;padding:8px;gap:8px}
+.servo-view{flex:2;background:#111;border:1px solid #444;padding:10px;position:relative;overflow:hidden}
+.telem-panel{flex:0 0 200px;min-width:200px;max-width:280px;background:#111;border:1px solid #444;padding:10px;overflow-y:auto;font-size:13px}
+.gamepad-panel{flex:0 0 320px;min-width:320px;max-width:380px;background:#111;border:1px solid #444;padding:10px;overflow-y:auto}
+.console-area{flex:2;display:flex;flex-direction:column}
+#out{flex:1;overflow-y:auto;border:1px solid #444;padding:5px;background:#111;font-size:13px}
+.cmd-bar{display:flex;gap:4px;margin-top:4px}
+#cmd{flex:1;padding:5px;background:#222;color:#0f0;border:1px solid #444;font-family:monospace}
+.btn{padding:4px 8px;margin:1px;background:#333;color:#0f0;border:1px solid #444;cursor:pointer;font-size:12px}
 .btn:hover{background:#444}
-.help-pane{flex:1;min-width:180px;max-width:260px;background:#111;border:1px solid #444;padding:10px;margin-left:10px;font-size:14px;overflow-y:auto}
+.help-pane{flex:0 0 250px;min-width:250px;max-width:380px;background:#111;border:1px solid #444;padding:8px;overflow-y:auto;font-size:12px}
+.robot-body{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:290px;height:290px}
+.joint-box{position:absolute;background:#222;border:1px solid #555;padding:2px 4px;font-size:11px;text-align:center;border-radius:3px;min-width:42px}
+.joint-box .lbl{color:#888;font-size:9px}
+.joint-box .val{color:#0f0;font-weight:bold}
+.body-rect{position:absolute;top:70px;left:95px;width:100px;height:180px;border:2px solid #555;border-radius:12px;background:#1a1a1a}
+.head-circ{position:absolute;top:30px;left:125px;width:40px;height:40px;border:2px solid #555;border-radius:50%;background:#1a1a1a}
+.leg-line{position:absolute;background:#444;height:2px}
+.section-hdr{color:#0ff;font-size:12px;font-weight:bold;margin:8px 0 4px 0;border-bottom:1px solid #333;padding-bottom:2px}
+.telem-row{display:flex;justify-content:space-between;padding:2px 0}
+.telem-lbl{color:#888}
+.telem-val{color:#0f0;font-weight:bold}
+.telem-val.warn{color:#ff0}
+.telem-val.crit{color:#f44}
+.imu-bar{height:6px;background:#333;margin:2px 0;border-radius:3px;overflow:hidden}
+.imu-fill{height:100%;background:#0f0;transition:width 0.2s}
 </style></head><body>
-<h3>OpenCat Console <span id="status" style="color:#ff0">*</span></h3>
-<div style="display:flex;gap:10px">
-  <div style="flex:2">
+
+<!-- TOP PANEL: Servo View + Telemetry -->
+<div class="top-panel">
+  <div class="servo-view">
+    <div style="font-size:11px;color:#888;margin-bottom:4px">Servo Positions (top-down view) <span id="status" style="color:#ff0">&#9679;</span></div>
+    <div class="robot-body">
+      <!-- Head -->
+      <div class="head-circ"></div>
+      <div class="joint-box" style="top:10px;left:110px" id="j0"><div class="lbl">Pan</div><div class="val" id="v0">--</div></div>
+      <div class="joint-box" style="top:48px;left:170px" id="j1"><div class="lbl">Tilt</div><div class="val" id="v1">--</div></div>
+      <!-- Body outline -->
+      <div class="body-rect"></div>
+      <!-- Tail -->
+      <div class="joint-box" style="top:260px;left:110px" id="j2"><div class="lbl">Tail</div><div class="val" id="v2">--</div></div>
+      <!-- Left Front leg (top-left) -->
+      <div class="joint-box" style="top:60px;left:0px" id="j4"><div class="lbl">LF Roll</div><div class="val" id="v4">--</div></div>
+      <div class="joint-box" style="top:90px;left:0px" id="j8"><div class="lbl">LF Shldr</div><div class="val" id="v8">--</div></div>
+      <div class="joint-box" style="top:120px;left:0px" id="j12"><div class="lbl">LF Knee</div><div class="val" id="v12">--</div></div>
+      <!-- Right Front leg (top-right) -->
+      <div class="joint-box" style="top:60px;left:210px" id="j5"><div class="lbl">RF Roll</div><div class="val" id="v5">--</div></div>
+      <div class="joint-box" style="top:90px;left:210px" id="j9"><div class="lbl">RF Shldr</div><div class="val" id="v9">--</div></div>
+      <div class="joint-box" style="top:120px;left:210px" id="j13"><div class="lbl">RF Knee</div><div class="val" id="v13">--</div></div>
+      <!-- Left Back leg (bottom-left) -->
+      <div class="joint-box" style="top:170px;left:0px" id="j6"><div class="lbl">LB Roll</div><div class="val" id="v6">--</div></div>
+      <div class="joint-box" style="top:200px;left:0px" id="j10"><div class="lbl">LB Shldr</div><div class="val" id="v10">--</div></div>
+      <div class="joint-box" style="top:230px;left:0px" id="j14"><div class="lbl">LB Knee</div><div class="val" id="v14">--</div></div>
+      <!-- Right Back leg (bottom-right) -->
+      <div class="joint-box" style="top:170px;left:210px" id="j7"><div class="lbl">RB Roll</div><div class="val" id="v7">--</div></div>
+      <div class="joint-box" style="top:200px;left:210px" id="j11"><div class="lbl">RB Shldr</div><div class="val" id="v11">--</div></div>
+      <div class="joint-box" style="top:230px;left:210px" id="j15"><div class="lbl">RB Knee</div><div class="val" id="v15">--</div></div>
+    </div>
+  </div>
+
+  <!-- Telemetry Panel -->
+  <div class="telem-panel">
+    <div class="section-hdr">Battery</div>
+    <div class="telem-row"><span class="telem-lbl">Voltage</span><span class="telem-val" id="bat-v">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="bat-bar" style="width:0%"></div></div>
+
+    <div class="section-hdr">IMU Orientation</div>
+    <div class="telem-row"><span class="telem-lbl">Yaw</span><span class="telem-val" id="imu-yaw">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="yaw-bar" style="width:50%;background:#08f"></div></div>
+    <div class="telem-row"><span class="telem-lbl">Pitch</span><span class="telem-val" id="imu-pitch">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="pitch-bar" style="width:50%;background:#f80"></div></div>
+    <div class="telem-row"><span class="telem-lbl">Roll</span><span class="telem-val" id="imu-roll">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="roll-bar" style="width:50%;background:#0f8"></div></div>
+
+    <div class="section-hdr">Status</div>
+    <div class="telem-row"><span class="telem-lbl">Skill</span><span class="telem-val" id="cur-skill">--</span></div>
+    <div class="telem-row"><span class="telem-lbl">Uptime</span><span class="telem-val" id="uptime">--</span></div>
+    <div class="telem-row"><span class="telem-lbl">Heap</span><span class="telem-val" id="heap">--</span></div>
+  </div>
+
+  <!-- Gamepad Status Panel -->
+  <div class="gamepad-panel">
+    <div style="font-size:11px;color:#888;margin-bottom:6px"><b style="color:#0ff">Gamepad</b> <span id="gp-status" style="color:#f44">&#9679; Disconnected</span></div>
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <!-- Left Stick Visualization -->
+      <div style="text-align:center">
+        <div style="font-size:9px;color:#888;margin-bottom:2px">Left Stick</div>
+        <svg width="140" height="140" viewBox="0 0 140 140" style="display:block">
+          <!-- Outer ring -->
+          <circle cx="70" cy="70" r="65" fill="#1a1a1a" stroke="#444" stroke-width="2"/>
+          <!-- Direction zones (subtle) -->
+          <line x1="70" y1="5" x2="70" y2="135" stroke="#333" stroke-width="1"/>
+          <line x1="5" y1="70" x2="135" y2="70" stroke="#333" stroke-width="1"/>
+          <line x1="23" y1="23" x2="117" y2="117" stroke="#222" stroke-width="1"/>
+          <line x1="117" y1="23" x2="23" y2="117" stroke="#222" stroke-width="1"/>
+          <!-- Direction labels -->
+          <text x="70" y="18" fill="#0f0" font-size="8" text-anchor="middle">wkF</text>
+          <text x="70" y="132" fill="#0f0" font-size="8" text-anchor="middle">bkF</text>
+          <text x="14" y="73" fill="#0f0" font-size="8" text-anchor="middle">trL</text>
+          <text x="126" y="73" fill="#0f0" font-size="8" text-anchor="middle">trR</text>
+          <text x="28" y="30" fill="#ff0" font-size="7" text-anchor="middle">wkL</text>
+          <text x="112" y="30" fill="#ff0" font-size="7" text-anchor="middle">wkR</text>
+          <text x="28" y="118" fill="#ff0" font-size="7" text-anchor="middle">bkL</text>
+          <text x="112" y="118" fill="#ff0" font-size="7" text-anchor="middle">bkR</text>
+          <!-- Stick position indicator -->
+          <circle id="gp-lstick" cx="70" cy="70" r="8" fill="#0f0" opacity="0.8"/>
+          <!-- Center dot -->
+          <circle cx="70" cy="70" r="3" fill="#444"/>
+        </svg>
+        <div style="font-size:9px;color:#666;margin-top:2px" id="gp-lstick-val">0, 0</div>
+      </div>
+      <!-- Right Stick Visualization -->
+      <div style="text-align:center">
+        <div style="font-size:9px;color:#888;margin-bottom:2px">Right Stick</div>
+        <svg width="100" height="100" viewBox="0 0 100 100" style="display:block">
+          <circle cx="50" cy="50" r="45" fill="#1a1a1a" stroke="#444" stroke-width="2"/>
+          <line x1="50" y1="5" x2="50" y2="95" stroke="#333" stroke-width="1"/>
+          <line x1="5" y1="50" x2="95" y2="50" stroke="#333" stroke-width="1"/>
+          <text x="50" y="16" fill="#888" font-size="7" text-anchor="middle">Tilt&#8593;</text>
+          <text x="50" y="94" fill="#888" font-size="7" text-anchor="middle">Tilt&#8595;</text>
+          <text x="10" y="53" fill="#888" font-size="7" text-anchor="middle">&#8592;Pan</text>
+          <text x="90" y="53" fill="#888" font-size="7" text-anchor="middle">Pan&#8594;</text>
+          <!-- Stick position indicator -->
+          <circle id="gp-rstick" cx="50" cy="50" r="6" fill="#08f" opacity="0.8"/>
+          <circle cx="50" cy="50" r="2" fill="#444"/>
+        </svg>
+        <div style="font-size:9px;color:#666;margin-top:2px" id="gp-rstick-val">0, 0</div>
+      </div>
+    </div>
+    <!-- Buttons Status -->
+    <div style="margin-top:8px">
+      <div style="font-size:9px;color:#888;margin-bottom:4px">Buttons</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;text-align:center">
+        <div id="gp-btn-y" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">Y</span><br><span style="color:#555">Hi</span></div>
+        <div id="gp-btn-x" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">X</span><br><span style="color:#555">Str</span></div>
+        <div id="gp-btn-a" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">A</span><br><span style="color:#555">Up</span></div>
+        <div id="gp-btn-b" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">B</span><br><span style="color:#555">Sit</span></div>
+        <div id="gp-btn-l" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">L</span><br><span style="color:#555">Trot</span></div>
+        <div id="gp-btn-r" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">R</span><br><span style="color:#555">Crawl</span></div>
+        <div id="gp-btn-zl" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">ZL</span><br><span style="color:#555">PU</span></div>
+        <div id="gp-btn-zr" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px"><span style="color:#888">ZR</span><br><span style="color:#555">Spcl</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;text-align:center;margin-top:3px">
+        <div id="gp-dpad-l" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px;color:#555">&#9664;</div>
+        <div id="gp-dpad-u" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px;color:#555">&#9650;</div>
+        <div id="gp-dpad-d" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px;color:#555">&#9660;</div>
+        <div id="gp-dpad-r" style="background:#222;border:1px solid #444;border-radius:3px;padding:2px;font-size:9px;color:#555">&#9654;</div>
+      </div>
+    </div>
+    <div style="margin-top:6px;font-size:9px;color:#555">Last: <span id="gp-last-cmd">--</span></div>
+  </div>
+</div>
+
+<!-- BOTTOM PANEL: Console + Help -->
+<div class="bot-panel">
+  <div class="console-area">
     <div id="out">Ready. Free: )rawliteral" + String(freeHeap) + R"rawliteral( bytes<br></div>
-    <input id="cmd" placeholder="Enter command...">
-    <button class="btn" onclick="send()">Send</button>
-    <button class="btn" onclick="clear()">Clear</button><br>
-    <button class="btn" onclick="q('ksit')">Sit</button>
-    <button class="btn" onclick="q('kup')">Up</button>
-    <button class="btn" onclick="q('d')">Rest</button>
-    <button class="btn" onclick="q('h')">Help</button>
+    <div class="cmd-bar">
+      <input id="cmd" placeholder="Enter command...">
+      <button class="btn" onclick="send()">Send</button>
+      <button class="btn" onclick="clear()">Clear</button>
+      <button class="btn" onclick="q('k sit')">Sit</button>
+      <button class="btn" onclick="q('k up')">Up</button>
+      <button class="btn" onclick="q('d')">Rest</button>
+      <button class="btn" onclick="q('h')">Help</button>
+    </div>
   </div>
   <div class="help-pane">
     <b>Help & Commands</b><hr style="border:1px solid #222">
-    <ul style="padding-left:18px;margin:0">
-  <li><b>wkF</b>: Walk forward</li>
-  <li><b>bk</b>: Walk backward</li>
-  <li><b>tbl</b>: Turn body left</li>
-  <li><b>str</b>: Stretch</li>
-  <li><b>pu</b>: Push up</li>
-  <li><b>rol</b>: Roll</li>
-  <li><b>hi</b>: Say hi</li>
-  <li><b>ksit</b>: Sit down</li>
-  <li><b>kup</b>: Stand up</li>
-      <li><b>d</b>: Rest (power off servos)</li>
-      <li><b>h</b>: Show help</li>
-      <li><b>g</b>: Toggle gyro/IMU</li>
-      <li><b>j</b>: Show joint angles</li>
-      <li><b>P</b>: Show battery voltage</li>
-      <li><b>c</b>: Calibrate servos</li>
-      <li><b>f</b>: Servo feedback</li>
-      <li><b>l</b>: Adjust balance slope</li>
-      <li><b>n</b>: Set Bluetooth name</li>
-      <li><b>u</b>: Meow (sound)</li>
-      <li><b>w</b>: WiFi info</li>
-      <li><b>z</b>: Toggle random mind</li>
-      <li><b>R</b>: Robot arm control</li>
-      <li><b>s</b>: Save settings</li>
-      <li><b>t</b>: Tilt</li>
-      <li><b>?</b>: Query status</li>
-      <li><b>!</b>: Reset</li>
-      <li><b>X...</b>: Extension/module command</li>
+    <div style="margin:6px 0 2px 0;font-size:12px;color:#0ff"><b>Movement (prefix k):</b></div>
+    <ul style="padding-left:14px;margin:0;font-size:12px">
+      <li><b>k wkF</b> walk forward, <b>k wkL</b> left, <b>k wkR</b> right</li>
+      <li><b>k bk</b> backward, <b>k bkL</b> back left, <b>k bkR</b> back right</li>
+      <li><b>k trF</b> trot forward, <b>k trL</b> trot left, <b>k trR</b> trot right</li>
+      <li><b>k crF</b> crawl forward, <b>k crL</b> crawl left, <b>k crR</b> crawl right</li>
+      <li><b>k vtF</b> step forward, <b>k vtL</b> step left</li>
+      <li><b>k tbl</b> table</li>
     </ul>
-    <div style="margin:10px 0 4px 0;font-size:13px;color:#0ff"><b>Active Modules:</b></div>
-    <ul style="padding-left:18px;margin:0">
-      <li>Voice</li>
-      <li>BackTouch</li>
-      <li>Ultrasonic</li>
-      <!-- Add more modules as detected/activated in code -->
+    <div style="margin:6px 0 2px 0;font-size:12px;color:#0ff"><b>Postures (prefix k):</b></div>
+    <ul style="padding-left:14px;margin:0;font-size:12px">
+      <li><b>k sit</b> sit down</li>
+      <li><b>k up</b> stand up</li>
+      <li><b>k rest</b> rest posture</li>
+      <li><b>k balance</b> balance</li>
+      <li><b>k str</b> stretch</li>
+      <li><b>k buttUp</b> butt up</li>
+      <li><b>k zero</b> zero position</li>
+      <li><b>k hi</b> wave hello</li>
+      <li><b>k pu</b> push up</li>
     </ul>
-    <div style="margin-top:8px;font-size:12px;color:#aaa">Type a command or use the buttons.<br>See documentation for more.<br>Module commands: <b>X</b> + module code (see docs).</div>
+    <div style="margin:6px 0 2px 0;font-size:12px;color:#0ff"><b>System:</b></div>
+    <ul style="padding-left:14px;margin:0;font-size:12px">
+      <li><b>d</b> rest (servos off)</li>
+      <li><b>p</b> pause / resume</li>
+      <li><b>g</b> toggle gyro</li>
+      <li><b>j</b> joints, <b>P</b> battery, <b>c</b> calibrate</li>
+      <li><b>f</b> feedback, <b>n</b> BT name, <b>w</b> WiFi</li>
+      <li><b>b</b> beep, <b>u</b> meow, <b>z</b> random</li>
+      <li><b>!</b> reset, <b>?</b> query, <b>h</b> help</li>
+      <li><b>i0 45</b> move joint 0 to 45&deg;</li>
+    </ul>
   </div>
 </div>
 
 <script>
-// Client-side keep-alive ping to keep WebSocket connection active
-setInterval(() => {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({type: "ping"}));
-}, 10000); // every 10 seconds
+setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))},10000);
 let ws;
 function log(msg,type){let out=document.getElementById('out');let color=type==='command'?'#ff0':type==='error'?'#f66':'#0f0';out.innerHTML+='<br><span style="color:'+color+'">'+msg+'</span>';out.scrollTop=999999}
 function send(){let c=document.getElementById('cmd').value.trim();if(!c)return;log('> '+c,'command');
-if(ws&&ws.readyState===1){ws.send(JSON.stringify({type:'command',commands:[c]}));log('> Sent via WebSocket','normal')}
+if(ws&&ws.readyState===1){ws.send(JSON.stringify({type:'command',commands:[c]}))}
 else{fetch('/command',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'command='+encodeURIComponent(c)}).then(r=>r.text()).then(d=>log(d,'normal')).catch(e=>log('Error: '+e,'error'))}
 document.getElementById('cmd').value=''}
 function q(c){document.getElementById('cmd').value=c;send()}
 function clear(){document.getElementById('out').innerHTML='Console cleared'}
 
+// Update servo position display
+function updateJointDisplay(angles){
+  for(let i=0;i<16;i++){
+    let el=document.getElementById('v'+i);
+    if(el){el.textContent=angles[i]+'°';
+      let v=Math.abs(angles[i]);
+      el.style.color=v>80?'#f44':v>50?'#ff0':'#0f0';
+    }
+  }
+}
+
+// Update telemetry panel
+function updateTelemetry(d){
+  if(d.battery!==undefined){
+    let el=document.getElementById('bat-v');
+    el.textContent=d.battery.toFixed(1)+'V';
+    let pct=Math.max(0,Math.min(100,((d.battery-6.0)/2.4)*100));
+    document.getElementById('bat-bar').style.width=pct+'%';
+    document.getElementById('bat-bar').style.background=pct<20?'#f44':pct<40?'#ff0':'#0f0';
+    el.className='telem-val'+(pct<20?' crit':pct<40?' warn':'');
+  }
+  if(d.yaw!==undefined){
+    document.getElementById('imu-yaw').textContent=d.yaw.toFixed(1)+'°';
+    document.getElementById('yaw-bar').style.width=((d.yaw+180)/360*100)+'%';
+  }
+  if(d.pitch!==undefined){
+    document.getElementById('imu-pitch').textContent=d.pitch.toFixed(1)+'°';
+    document.getElementById('pitch-bar').style.width=((d.pitch+90)/180*100)+'%';
+  }
+  if(d.roll!==undefined){
+    document.getElementById('imu-roll').textContent=d.roll.toFixed(1)+'°';
+    document.getElementById('roll-bar').style.width=((d.roll+90)/180*100)+'%';
+  }
+  if(d.skill)document.getElementById('cur-skill').textContent=d.skill;
+  if(d.ts){
+    let s=Math.floor(d.ts/1000);
+    let m=Math.floor(s/60);s%=60;
+    let h=Math.floor(m/60);m%=60;
+    document.getElementById('uptime').textContent=h+'h'+m+'m'+s+'s';
+  }
+}
+
+function parseJointAngles(msg){
+  let m=msg.match(/-?\d+/g);
+  if(m&&m.length>=16){updateJointDisplay(m.map(Number))}
+}
+function patchWS(){if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'get_system_info'}))}
+function stopAutoJointUpdates(){}
+
+// Gamepad UI update functions
+function updateGamepad(d){
+  // Connection status
+  if(d.connected!==undefined){
+    let el=document.getElementById('gp-status');
+    el.innerHTML=d.connected?'&#9679; Connected':'&#9679; Disconnected';
+    el.style.color=d.connected?'#0f0':'#f44';
+  }
+  // Left stick position (values -512 to 512, map to SVG coords 5-135)
+  if(d.lx!==undefined&&d.ly!==undefined){
+    let sx=70+(d.lx/512)*55;
+    let sy=70+(d.ly/512)*55;
+    let el=document.getElementById('gp-lstick');
+    if(el){el.setAttribute('cx',sx);el.setAttribute('cy',sy)}
+    document.getElementById('gp-lstick-val').textContent=d.lx+', '+d.ly;
+  }
+  // Right stick position (map to SVG coords 5-95)
+  if(d.rx!==undefined&&d.ry!==undefined){
+    let sx=50+(d.rx/512)*38;
+    let sy=50+(d.ry/512)*38;
+    let el=document.getElementById('gp-rstick');
+    if(el){el.setAttribute('cx',sx);el.setAttribute('cy',sy)}
+    document.getElementById('gp-rstick-val').textContent=d.rx+', '+d.ry;
+  }
+  // Buttons (bitmask)
+  if(d.buttons!==undefined){
+    let b=d.buttons;
+    setBtn('gp-btn-a',b&0x0001);setBtn('gp-btn-b',b&0x0002);
+    setBtn('gp-btn-x',b&0x0004);setBtn('gp-btn-y',b&0x0008);
+    setBtn('gp-btn-l',b&0x0010);setBtn('gp-btn-r',b&0x0020);
+    setBtn('gp-btn-zl',b&0x0040);setBtn('gp-btn-zr',b&0x0080);
+  }
+  // D-pad
+  if(d.dpad!==undefined){
+    let dp=d.dpad;
+    setBtn('gp-dpad-u',dp&0x01);setBtn('gp-dpad-d',dp&0x02);
+    setBtn('gp-dpad-r',dp&0x04);setBtn('gp-dpad-l',dp&0x08);
+  }
+  // Last command
+  if(d.cmd){document.getElementById('gp-last-cmd').textContent=d.cmd;document.getElementById('gp-last-cmd').style.color='#0f0'}
+}
+function setBtn(id,active){let el=document.getElementById(id);if(el){el.style.background=active?'#0a3':'#222';el.style.borderColor=active?'#0f0':'#444'}}
+
 function connect(){
 ws=new WebSocket('ws://'+location.hostname+':81');
-ws.onopen=()=>{log('WebSocket connected');document.getElementById('status').style.color='#0f0';patchWS();};
-ws.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.type==='joint_data'&&d.angles){updateJointDisplay(d.angles)}else if(d.type==='response'&&d.results){d.results.forEach(r=>{log('Result: '+r);if(r.includes('=')||r.match(/-?\d+,\s*-?\d+/)){parseJointAngles(r)}})}else if(d.type==='robot_output'){let msg=d.message.replace(/\n$/,'');log(msg);if(msg.includes('=')||msg.match(/-?\d+,\s*-?\d+/)){parseJointAngles(msg)}}else{log('WS: '+JSON.stringify(d))}}catch{log('WS: '+e.data)}};
-ws.onclose=()=>{log('WebSocket closed');document.getElementById('status').style.color='#ff0';stopAutoJointUpdates();setTimeout(connect,3000)};
-ws.onerror=()=>{log('WebSocket error');document.getElementById('status').style.color='#f00';stopAutoJointUpdates()}}
+ws.onopen=()=>{log('Connected');document.getElementById('status').style.color='#0f0';patchWS()};
+ws.onmessage=e=>{try{let d=JSON.parse(e.data);
+  if(d.type==='joint_data'&&d.angles){updateJointDisplay(d.angles)}
+  else if(d.type==='telemetry'){updateTelemetry(d);if(d.angles)updateJointDisplay(d.angles)}
+  else if(d.type==='system_info'){document.getElementById('heap').textContent=Math.round(d.free_heap/1024)+'KB';if(d.battery_voltage)updateTelemetry({battery:d.battery_voltage,ts:d.uptime})}
+  else if(d.type==='gamepad'){updateGamepad(d)}
+  else if(d.type==='response'&&d.results){d.results.forEach(r=>{log('Result: '+r);parseJointAngles(r)})}
+  else if(d.type==='robot_output'){let msg=d.message.replace(/\n$/,'');log(msg);parseJointAngles(msg)}
+  else if(d.type!=='heartbeat'){log('WS: '+JSON.stringify(d))}
+}catch(x){log('WS: '+e.data)}};
+ws.onclose=()=>{log('Disconnected');document.getElementById('status').style.color='#ff0';setTimeout(connect,3000)};
+ws.onerror=()=>{log('WS Error');document.getElementById('status').style.color='#f00'}}
 document.getElementById('cmd').onkeydown=e=>{if(e.key==='Enter')send()}
 setTimeout(connect,1000)
-
-
 </script></body></html>
 )rawliteral";
   
@@ -1177,6 +1430,49 @@ void sendSystemInfo() {
   for (auto &client : connectedClients) {
     if (client.second) {
       webSocket.sendTXT(client.first, infoData);
+    }
+  }
+}
+
+// Periodic telemetry: IMU + battery data
+unsigned long lastTelemetryTime = 0;
+const unsigned long TELEMETRY_INTERVAL = 200;  // 200ms = 5Hz
+
+void sendTelemetry() {
+  if (!webServerConnected || connectedClients.empty()) {
+    return;
+  }
+  unsigned long now = millis();
+  if (now - lastTelemetryTime < TELEMETRY_INTERVAL) {
+    return;
+  }
+  lastTelemetryTime = now;
+
+  JsonDocument telDoc;
+  telDoc["type"] = "telemetry";
+#ifdef GYRO_PIN
+  telDoc["yaw"] = ypr[0];
+  telDoc["pitch"] = ypr[1];
+  telDoc["roll"] = ypr[2];
+#endif
+#ifdef VOLTAGE
+  extern float lastVoltage;
+  telDoc["battery"] = lastVoltage;
+#endif
+  telDoc["skill"] = (skill != nullptr && skill->skillName[0] != '\0') ? skill->skillName : "none";
+  telDoc["ts"] = now;
+  // Include joint angles in telemetry for continuous display updates
+  JsonArray angles = telDoc["angles"].to<JsonArray>();
+  for (int i = 0; i < DOF; i++) {
+    angles.add((int)currentAng[i]);
+  }
+
+  String telData;
+  serializeJson(telDoc, telData);
+
+  for (auto &client : connectedClients) {
+    if (client.second) {
+      webSocket.sendTXT(client.first, telData);
     }
   }
 }

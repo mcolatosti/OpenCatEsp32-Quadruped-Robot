@@ -24,10 +24,11 @@
 //#define DOUBLE_LIGHT              // for double light sensor
 //#define DOUBLE_INFRARED_DISTANCE  // for double distance sensor
 //#define GESTURE                   // for Gesture module
-#define CAMERA                    // for Mu Vision camera
+//#define CAMERA                    // for Mu Vision camera
 #define QUICK_DEMO                // for quick demo
 // #define ROBOT_ARM                 // for attaching head clip arm
 #include "src/OpenCat.h"
+#include "src/gamepad.h"
 #include "src/SerialWebFork.h"
 
 #include <atomic>
@@ -51,6 +52,9 @@ void setup() {
   printToAllPorts(reasonStr);
 
   initRobot();
+#ifdef BLUEPAD32
+  gamepadSetup();
+#endif
 #ifdef WEB_SERVER
   bool wifiOk = connectWifiFromStoredConfig();
   if (wifiOk) {
@@ -103,6 +107,9 @@ void loop() {
 #endif
   reaction();
 
+#ifdef BLUEPAD32
+  gamepadLoop();  // Process gamepad input
+#endif
 #ifdef WEB_SERVER
   WebServerLoop();  // Handle asynchronous Web requests
 #endif

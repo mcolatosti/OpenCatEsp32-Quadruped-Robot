@@ -86,8 +86,14 @@ String uniqueName = "";
 // #define I2C_EEPROM_ADDRESS 0x54  // Address of i2c eeprom chip
 
 #define BIRTHMARK '@'  // Send '!' token to reset the birthmark in the EEPROM so that the robot will know to restart and reset
-#define BT_BLE  // toggle Bluetooth Low Energy (BLE）
-#define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP)
+#define BLUEPAD32  // toggle BluePad32 gamepad support (Nintendo Switch Pro Controller, etc.)
+// #define BT_BLE  // toggle Bluetooth Low Energy (BLE) - disabled when using BluePad32
+// #define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP) - disabled when using BluePad32
+
+// Provide fallback for buffLen when BLE is disabled (used in motion.h autoCalibrate)
+#ifndef BT_BLE
+int buffLen = 0;
+#endif
 // #define WIFI_MANAGER  // toggle WiFi Manager. It should be always off for now
 #define WEB_SERVER // toggle web server
 // #define SHOW_FPS // toggle FPS display
@@ -176,7 +182,9 @@ const uint8_t PWM_pin[PWM_NUM] = {
 #define PWM_NUM 12
 // #define INTERRUPT_PIN 26  // use pin 2 on Arduino Uno & most boards
 #define BUZZER 2
-#define BT_CLIENT  // toggle Bluetooth client (BLE） for Micro:Bit
+#ifndef BLUEPAD32
+#define BT_CLIENT  // toggle Bluetooth client (BLE) for Micro:Bit - disabled when using BluePad32
+#endif
 // #define IR_PIN 23
 
 #define LOW_VOLTAGE 7.0  // for 2S 7.4V power
