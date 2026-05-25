@@ -1,5 +1,33 @@
 # Change Log
 
+## May 25, 2025
+* **BluePad32 Gamepad Support**: Added Nintendo Switch Pro Controller integration via BluePad32 library.
+  - 8-direction left stick movement (wkF, bkF, trL, trR, wkL, wkR, bkL, bkR)
+  - Right stick for head pan/tilt control
+  - D-pad for discrete head positioning
+  - Buttons mapped to skills (A=stand, B=sit, X=stretch, Y=greeting, L=trot, R=crawl, ZL=push up, ZR=special)
+  - Conditional compilation via `#define BLUEPAD32` — disables BT_BLE/BT_SSP/BT_CLIENT when active
+* **Live Gamepad Web UI**: Added interactive gamepad panel to the web interface (top-right of main window).
+  - SVG stick position indicators update in real-time via WebSocket
+  - Button grid highlights on press
+  - Connection status and last command display
+  - Broadcasts gamepad state every 150ms to all connected web clients
+* **Web Server Enhancements**:
+  - Full terminal-style console with WebSocket real-time output
+  - Live servo position visualization (top-down robot body diagram with joint angle color coding)
+  - Real-time telemetry panel: battery voltage, IMU yaw/pitch/roll, uptime, heap
+  - Help panel with command reference
+  - Quick command buttons (Sit, Up, Rest, Help)
+  - All serial output mirrored to web console via `printToAllPorts()`
+  - Heartbeat management with BLE activity awareness
+* **Configuration Updates**:
+  - Partition scheme changed to "Huge APP (3MB No OTA/1MB SPIFFS)" to accommodate larger firmware
+  - Board platform: BluePad32 for Arduino → ESP32 Dev Module
+* **Bug Fixes**:
+  - Fixed `PTL()` macro usage in `imu.h` (was passing argument to zero-argument macro)
+  - Added fallback `buffLen` variable when BT_BLE is disabled
+  - Guarded BT_CLIENT definition with `#ifndef BLUEPAD32` for BiBoard_V1_0
+
 ## Mar6, 2023
 * Recover the skillName stored in **newCmd** array because the newCmd's memory is altered when formatting new skill data. 
 * Fix the segfault caused by different string terminators: '\0', '\n', or '\~'.
