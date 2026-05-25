@@ -931,7 +931,7 @@ html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
 .top-panel{height:40vh;display:flex;border-bottom:2px solid #444;padding:8px;gap:8px}
 .bot-panel{height:60vh;display:flex;padding:8px;gap:8px}
 .servo-view{flex:2;background:#111;border:1px solid #444;padding:10px;position:relative;overflow:hidden}
-.telem-panel{flex:0 0 200px;min-width:200px;max-width:280px;background:#111;border:1px solid #444;padding:10px;overflow-y:auto;font-size:13px}
+.telem-panel{flex:0 0 250px;min-width:250px;max-width:380px;background:#111;border:1px solid #444;padding:10px;overflow-y:auto;font-size:13px}
 .gamepad-panel{flex:0 0 320px;min-width:320px;max-width:380px;background:#111;border:1px solid #444;padding:10px;overflow-y:auto}
 .console-area{flex:2;display:flex;flex-direction:column}
 #out{flex:1;overflow-y:auto;border:1px solid #444;padding:5px;background:#111;font-size:13px}
@@ -987,26 +987,6 @@ html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
       <div class="joint-box" style="top:200px;left:210px" id="j11"><div class="lbl">RB Shldr</div><div class="val" id="v11">--</div></div>
       <div class="joint-box" style="top:230px;left:210px" id="j15"><div class="lbl">RB Knee</div><div class="val" id="v15">--</div></div>
     </div>
-  </div>
-
-  <!-- Telemetry Panel -->
-  <div class="telem-panel">
-    <div class="section-hdr">Battery</div>
-    <div class="telem-row"><span class="telem-lbl">Voltage</span><span class="telem-val" id="bat-v">--</span></div>
-    <div class="imu-bar"><div class="imu-fill" id="bat-bar" style="width:0%"></div></div>
-
-    <div class="section-hdr">IMU Orientation</div>
-    <div class="telem-row"><span class="telem-lbl">Yaw</span><span class="telem-val" id="imu-yaw">--</span></div>
-    <div class="imu-bar"><div class="imu-fill" id="yaw-bar" style="width:50%;background:#08f"></div></div>
-    <div class="telem-row"><span class="telem-lbl">Pitch</span><span class="telem-val" id="imu-pitch">--</span></div>
-    <div class="imu-bar"><div class="imu-fill" id="pitch-bar" style="width:50%;background:#f80"></div></div>
-    <div class="telem-row"><span class="telem-lbl">Roll</span><span class="telem-val" id="imu-roll">--</span></div>
-    <div class="imu-bar"><div class="imu-fill" id="roll-bar" style="width:50%;background:#0f8"></div></div>
-
-    <div class="section-hdr">Status</div>
-    <div class="telem-row"><span class="telem-lbl">Skill</span><span class="telem-val" id="cur-skill">--</span></div>
-    <div class="telem-row"><span class="telem-lbl">Uptime</span><span class="telem-val" id="uptime">--</span></div>
-    <div class="telem-row"><span class="telem-lbl">Heap</span><span class="telem-val" id="heap">--</span></div>
   </div>
 
   <!-- Gamepad Status Panel -->
@@ -1080,6 +1060,26 @@ html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
     </div>
     <div style="margin-top:6px;font-size:9px;color:#555">Last: <span id="gp-last-cmd">--</span></div>
   </div>
+
+  <!-- Telemetry Panel -->
+  <div class="telem-panel">
+    <div class="section-hdr">Battery</div>
+    <div class="telem-row"><span class="telem-lbl">Voltage</span><span class="telem-val" id="bat-v">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="bat-bar" style="width:0%"></div></div>
+
+    <div class="section-hdr">IMU Orientation</div>
+    <div class="telem-row"><span class="telem-lbl">Yaw</span><span class="telem-val" id="imu-yaw">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="yaw-bar" style="width:50%;background:#08f"></div></div>
+    <div class="telem-row"><span class="telem-lbl">Pitch</span><span class="telem-val" id="imu-pitch">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="pitch-bar" style="width:50%;background:#f80"></div></div>
+    <div class="telem-row"><span class="telem-lbl">Roll</span><span class="telem-val" id="imu-roll">--</span></div>
+    <div class="imu-bar"><div class="imu-fill" id="roll-bar" style="width:50%;background:#0f8"></div></div>
+
+    <div class="section-hdr">Status</div>
+    <div class="telem-row"><span class="telem-lbl">Skill</span><span class="telem-val" id="cur-skill">--</span></div>
+    <div class="telem-row"><span class="telem-lbl">Uptime</span><span class="telem-val" id="uptime">--</span></div>
+    <div class="telem-row"><span class="telem-lbl">Heap</span><span class="telem-val" id="heap">--</span></div>
+  </div>
 </div>
 
 <!-- BOTTOM PANEL: Console + Help -->
@@ -1148,7 +1148,7 @@ function clear(){document.getElementById('out').innerHTML='Console cleared'}
 function updateJointDisplay(angles){
   for(let i=0;i<16;i++){
     let el=document.getElementById('v'+i);
-    if(el){el.textContent=angles[i]+'°';
+    if(el){el.textContent=angles[i]+'\u00B0';
       let v=Math.abs(angles[i]);
       el.style.color=v>80?'#f44':v>50?'#ff0':'#0f0';
     }
@@ -1166,15 +1166,15 @@ function updateTelemetry(d){
     el.className='telem-val'+(pct<20?' crit':pct<40?' warn':'');
   }
   if(d.yaw!==undefined){
-    document.getElementById('imu-yaw').textContent=d.yaw.toFixed(1)+'°';
+    document.getElementById('imu-yaw').textContent=d.yaw.toFixed(1)+'\u00B0';
     document.getElementById('yaw-bar').style.width=((d.yaw+180)/360*100)+'%';
   }
   if(d.pitch!==undefined){
-    document.getElementById('imu-pitch').textContent=d.pitch.toFixed(1)+'°';
+    document.getElementById('imu-pitch').textContent=d.pitch.toFixed(1)+'\u00B0';
     document.getElementById('pitch-bar').style.width=((d.pitch+90)/180*100)+'%';
   }
   if(d.roll!==undefined){
-    document.getElementById('imu-roll').textContent=d.roll.toFixed(1)+'°';
+    document.getElementById('imu-roll').textContent=d.roll.toFixed(1)+'\u00B0';
     document.getElementById('roll-bar').style.width=((d.roll+90)/180*100)+'%';
   }
   if(d.skill)document.getElementById('cur-skill').textContent=d.skill;
