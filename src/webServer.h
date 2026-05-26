@@ -924,7 +924,11 @@ void handleConsole() {
     return;
   }
   
-  String html = R"rawliteral(<!DOCTYPE html><html><head><title>OpenCat Console</title>
+  // Use chunked transfer to avoid large single String allocation
+  httpServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  httpServer.send(200, "text/html", "");
+  
+  httpServer.sendContent(R"rawliteral(<!DOCTYPE html><html><head><title>OpenCat Console</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
@@ -989,6 +993,8 @@ html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
     </div>
   </div>
 
+)rawliteral");
+  httpServer.sendContent(R"rawliteral(
   <!-- Gamepad Status Panel -->
   <div class="gamepad-panel">
     <div style="font-size:11px;color:#888;margin-bottom:6px"><b style="color:#0ff">Gamepad</b> <span id="gp-status" style="color:#f44">&#9679; Disconnected</span></div>
@@ -1082,10 +1088,14 @@ html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
   </div>
 </div>
 
+)rawliteral");
+  httpServer.sendContent(R"rawliteral(
 <!-- BOTTOM PANEL: Console + Help -->
 <div class="bot-panel">
   <div class="console-area">
-    <div id="out">Ready. Free: )rawliteral" + String(freeHeap) + R"rawliteral( bytes<br></div>
+    <div id="out">Ready. Free: )rawliteral");
+  httpServer.sendContent(String(freeHeap));
+  httpServer.sendContent(R"rawliteral( bytes<br></div>
     <div class="cmd-bar">
       <input id="cmd" placeholder="Enter command...">
       <button class="btn" onclick="send()">Send</button>
@@ -1133,6 +1143,8 @@ html,body{height:100%;font-family:monospace;background:#000;color:#0f0}
   </div>
 </div>
 
+)rawliteral");
+  httpServer.sendContent(R"rawliteral(
 <script>
 setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))},10000);
 let ws;
@@ -1253,9 +1265,9 @@ ws.onerror=()=>{log('WS Error');document.getElementById('status').style.color='#
 document.getElementById('cmd').onkeydown=e=>{if(e.key==='Enter')send()}
 setTimeout(connect,1000)
 </script></body></html>
-)rawliteral";
+)rawliteral");
   
-  httpServer.send(200, "text/html", html);
+  httpServer.sendContent(""); // Close chunked transfer
 }
 
 void handleCommand() {
